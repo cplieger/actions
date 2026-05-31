@@ -1,0 +1,19 @@
+{
+  "name": "@cplieger/actions",
+  "version": "0.0.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsgo -project tsconfig.json",
+    "typecheck:tests": "tsgo -project tsconfig.test.json",
+    "test": "vitest --run"
+  },
+  "devDependencies": {
+    "@types/node": "22.15.21",
+    "happy-dom": "20.9.0",
+    "typescript": "5.8.3",
+    "vitest": "4.1.7"
+  }
+}
