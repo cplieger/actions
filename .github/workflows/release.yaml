@@ -1,5 +1,4 @@
 name: Release
-
 on:
   workflow_dispatch:
 
@@ -12,4 +11,3 @@ jobs:
     uses: cplieger/ci/.github/workflows/release.yaml@v1
     with:
       target: ts
-      working-directory: "."
