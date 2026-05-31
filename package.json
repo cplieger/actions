@@ -12,7 +12,7 @@
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
-    "@types/node": "22.15.21",
+    "@types/node": "24.12.4",
     "@vitest/coverage-v8": "4.1.7",
     "eslint": "10.4.0",
     "fast-check": "4.8.0",
