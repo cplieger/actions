@@ -52,6 +52,7 @@ export function safeStringify(args: unknown): string {
       value === undefined ? "__undef__" : value,
     );
   } catch {
+    // eslint-disable-next-line @typescript-eslint/no-base-to-string -- intentional fallback for cyclic objects
     return String(args);
   }
 }

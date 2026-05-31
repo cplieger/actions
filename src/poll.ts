@@ -62,6 +62,7 @@ export function pollAction<TArgs, TResult>(
     inFlight = true;
     try {
       const result = await action.dispatch(args);
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- state changes during async
       if (stopped) {
         return;
       }

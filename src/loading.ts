@@ -77,9 +77,11 @@ export function bindLoadingState(
   };
 
   const readPending = (): boolean =>
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion -- length checked above
     names.length === 1 ? isPending(names[0]!) : pendingCount(names) > 0;
 
-  let unsubs: (() => void)[] | undefined;
+  // eslint-disable-next-line prefer-const -- assigned after apply() closure is defined
+  let _unsubs: (() => void)[] | undefined;
 
   const apply = (): void => {
     if (disposed) {
@@ -87,8 +89,8 @@ export function bindLoadingState(
     }
     if (wasConnected && !el.isConnected) {
       disposed = true;
-      if (unsubs) {
-        for (const u of unsubs) {
+      if (_unsubs) {
+        for (const u of _unsubs) {
           u();
         }
       }
@@ -125,7 +127,8 @@ export function bindLoadingState(
 
   apply();
 
-  unsubs = names.map((name) => subscribeByName(name, apply));
+  const unsubs = names.map((name) => subscribeByName(name, apply));
+  _unsubs = unsubs;
 
   return () => {
     disposed = true;

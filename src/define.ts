@@ -76,9 +76,10 @@ export function defineAction<TArgs, TResult, TOp = unknown>(
       if (entry !== undefined) {
         const shared = entry.promise;
         if (shared === undefined) {
-          if (opts.onSettled) {
+          const onSettledCb = opts.onSettled;
+          if (onSettledCb) {
             safeInvoke(def.name, "onSettled", () => {
-              opts.onSettled!(args);
+              onSettledCb(args);
             });
           }
           return Promise.resolve(null);
@@ -86,39 +87,41 @@ export function defineAction<TArgs, TResult, TOp = unknown>(
         return (shared as Promise<TResult | null>).then(
           (v) => {
             if (v !== null) {
-              if (opts.onSuccess) {
+              const onSuccessCb = opts.onSuccess;
+              if (onSuccessCb) {
                 safeInvoke(def.name, "onSuccess", () => {
-                  opts.onSuccess!(v, args);
+                  onSuccessCb(v, args);
                 });
               }
             } else if (entry.error !== undefined) {
               const capturedErr = entry.error;
-              if (opts.onError) {
+              const onErrorCb = opts.onError;
+              if (onErrorCb) {
                 safeInvoke(def.name, "onError", () => {
-                  opts.onError!(capturedErr, args);
+                  onErrorCb(capturedErr, args);
                 });
               }
             } else if (entry.cancelled !== true) {
-              if (opts.onError) {
+              const onErrorCb = opts.onError;
+              if (onErrorCb) {
                 safeInvoke(def.name, "onError", () => {
-                  opts.onError!(
-                    { message: "deduped dispatch did not succeed", code: "dedupe" },
-                    args,
-                  );
+                  onErrorCb({ message: "deduped dispatch did not succeed", code: "dedupe" }, args);
                 });
               }
             }
-            if (opts.onSettled) {
+            const onSettledCb = opts.onSettled;
+            if (onSettledCb) {
               safeInvoke(def.name, "onSettled", () => {
-                opts.onSettled!(args);
+                onSettledCb(args);
               });
             }
             return v;
           },
           () => {
-            if (opts.onSettled) {
+            const onSettledCb = opts.onSettled;
+            if (onSettledCb) {
               safeInvoke(def.name, "onSettled", () => {
-                opts.onSettled!(args);
+                onSettledCb(args);
               });
             }
             return null;
@@ -188,9 +191,10 @@ export function defineAction<TArgs, TResult, TOp = unknown>(
             completedAt: now,
           });
         } finally {
-          if (opts.onSettled) {
+          const onSettledCb = opts.onSettled;
+          if (onSettledCb) {
             safeInvoke(def.name, "onSettled", () => {
-              opts.onSettled!(args);
+              onSettledCb(args);
             });
           }
           earlyCancelResolve(null);
@@ -247,9 +251,10 @@ export function defineAction<TArgs, TResult, TOp = unknown>(
     const settle = (): void => {
       inFlight.delete(id);
       started.delete(id);
-      if (opts.onSettled) {
+      const onSettledCb = opts.onSettled;
+      if (onSettledCb) {
         safeInvoke(def.name, "onSettled", () => {
-          opts.onSettled!(args);
+          onSettledCb(args);
         });
       }
     };
@@ -307,9 +312,10 @@ export function defineAction<TArgs, TResult, TOp = unknown>(
           error: err,
         });
         emitErrorToast(args, err);
-        if (opts.onError) {
+        const onErrorCb = opts.onError;
+        if (onErrorCb) {
           safeInvoke(def.name, "onError", () => {
-            opts.onError!(err, args);
+            onErrorCb(err, args);
           });
         }
         settle();
@@ -328,6 +334,7 @@ export function defineAction<TArgs, TResult, TOp = unknown>(
 
     try {
       const { result, attempts } = await runWithRetry(args, ac.signal, ctx);
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- signal state changes during async
       if (ac.signal.aborted) {
         if (dedupeEntry !== null) {
           dedupeEntry.cancelled = true;
@@ -365,16 +372,17 @@ export function defineAction<TArgs, TResult, TOp = unknown>(
       });
       evictDedupeSlot(dedupeKey, dedupeEntry);
       emitSuccessToast(args, result, opts);
-      if (opts.onSuccess) {
+      const onSuccessCb = opts.onSuccess;
+      if (onSuccessCb) {
         safeInvoke(def.name, "onSuccess", () => {
-          opts.onSuccess!(result, args);
+          onSuccessCb(result, args);
         });
       }
       return result;
     } catch (e: unknown) {
       const err = toActionError(e);
       const attempts = readAttempts(e);
-      const cancelled = ac.signal.aborted;
+      const cancelled = ac.signal.aborted as boolean;
       const status = cancelled ? "cancelled" : "error";
       if (dedupeEntry !== null) {
         if (cancelled) {
@@ -405,9 +413,10 @@ export function defineAction<TArgs, TResult, TOp = unknown>(
       }
       if (!cancelled) {
         emitErrorToast(args, err);
-        if (opts.onError) {
+        const onErrorCb = opts.onError;
+        if (onErrorCb) {
           safeInvoke(def.name, "onError", () => {
-            opts.onError!(err, args);
+            onErrorCb(err, args);
           });
         }
       }
@@ -428,6 +437,7 @@ export function defineAction<TArgs, TResult, TOp = unknown>(
     const factor = cfg?.factor ?? 2;
     const networkMode = def.networkMode ?? "online";
     let attempt = 0;
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- intentional infinite loop with throw exits
     while (true) {
       if (signal.aborted) {
         const abortErr = new DOMException("aborted", "AbortError");
@@ -439,6 +449,7 @@ export function defineAction<TArgs, TResult, TOp = unknown>(
         const result = await def.run(args, signal, ctx);
         return { result, attempts: attempt };
       } catch (e) {
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- signal state changes during async
         if (signal.aborted) {
           attachAttempts(e, attempt);
           throw e;

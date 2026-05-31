@@ -5,11 +5,7 @@
 // ---------------------------------------------------------------------------
 
 /** Lifecycle status of a single dispatched action instance. */
-export type ActionLifecycleStatus =
-  | "pending"
-  | "success"
-  | "error"
-  | "cancelled";
+export type ActionLifecycleStatus = "pending" | "success" | "error" | "cancelled";
 
 /** Errors thrown by an action's run() function. */
 export interface ActionErrorLike {
