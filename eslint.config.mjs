@@ -175,6 +175,7 @@ export default [
       "vitest.config.ts",
       "*.config.ts",
       "*.config.mjs",
+      "*.mjs",
       "*.config.js",
       "**/*.test.ts",
       "**/*.fuzz.test.ts",
