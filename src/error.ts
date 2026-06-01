@@ -46,7 +46,7 @@ export function toActionError(e: unknown): ActionErrorLike {
       r.status = e.status;
     }
     if (e.code !== undefined) {
-      r.code = e.code as string;
+      r.code = e.code;
     }
     if (e.cause !== undefined) {
       r.cause = e.cause;
