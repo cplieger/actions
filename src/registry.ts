@@ -1,5 +1,9 @@
 // Action registry: in-memory log of all dispatched actions with a
-// subscribe API. Fires per state transition. Bounded to a recent window.
+// subscribe API. Fires per state transition. Bounded to a recent
+// window so memory usage stays flat over a long session.
+//
+// Performance: eviction uses a head-pointer + tombstones instead of
+// splice + O(n) index re-computation. record() is O(1) amortized.
 // ---------------------------------------------------------------------------
 
 import type { ActionInstance, RegistryListener } from "./types.js";
@@ -182,6 +186,10 @@ export function recentLog(): readonly ActionInstance[] {
   }
   return result;
 }
+
+/** Read the recent action log. Useful for devtools integration and
+ *  debugging panels. Returns a snapshot of all live entries. */
+export const getActionLog = recentLog;
 
 /** O(1) check: true if at least one instance of the named action is pending. */
 export function isPending(name: string): boolean {

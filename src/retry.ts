@@ -1,5 +1,6 @@
-// retry.ts — extracted retry/backoff primitives. Pure utility functions
-// with no dependency on the action framework.
+// retry.ts — extracted retry/backoff primitives from define.ts.
+// These are pure utility functions with no dependency on the action
+// framework, making them independently testable.
 // ---------------------------------------------------------------------------
 
 /** Abort-aware sleep. Rejects with AbortError if the signal fires

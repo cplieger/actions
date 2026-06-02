@@ -9,17 +9,74 @@ import type { Action, ActionContext, ActionDefinition, RequestSpec } from "./typ
 /** Default request timeout in milliseconds. */
 export const API_TIMEOUT_MS = 30_000;
 
-/** Compose an optional caller signal with a fresh timeout signal. */
+/**
+ * Compose an optional caller signal with a fresh timeout signal.
+ * If the caller provides an existing signal, the result aborts when
+ * either the caller signal or the timeout fires — whichever comes first.
+ *
+ * @param signal - Existing signal to compose with (may be undefined).
+ * @param ms - Timeout in milliseconds.
+ * @returns A composed AbortSignal.
+ */
 export function withTimeout(signal: AbortSignal | undefined, ms: number): AbortSignal {
   return signal !== undefined
     ? AbortSignal.any([signal, AbortSignal.timeout(ms)])
     : AbortSignal.timeout(ms);
 }
 
-const JSON_HEADERS: Readonly<Record<string, string>> = { "Content-Type": "application/json" };
+const JSON_CT = "application/json";
 
-/** Caller-facing shape of an apiAction definition. */
-interface ApiActionDefinition<TArgs, TResult, TOp = unknown> extends Omit<
+// ---------------------------------------------------------------------------
+// HTTP customization seam (mirrors RTK fetchBaseQuery pattern)
+// ---------------------------------------------------------------------------
+
+/** Configuration for the global API fetch layer. Set via `configureApi()`. */
+export interface ApiConfig {
+  /** Base URL prepended to every RequestSpec.path (e.g. "https://api.example.com/v1"). */
+  readonly baseUrl?: string;
+  /** Inject headers on every request. Receives current headers + the request spec.
+   *  Mutate and/or return the headers object. May be async (e.g. to read a token store). */
+  readonly prepareHeaders?: (
+    headers: Headers,
+    context: { spec: RequestSpec },
+  ) => Headers | undefined | Promise<Headers | undefined>;
+  /** RequestInit.credentials mode applied to every request (e.g. "include" for cookies). */
+  readonly credentials?: RequestCredentials;
+  /** Custom fetch implementation. Useful for SSR (isomorphic-fetch) or testing. */
+  readonly fetchFn?: typeof fetch;
+}
+
+let _apiConfig: ApiConfig = {};
+
+/**
+ * Configure the global HTTP layer used by all `apiAction` instances.
+ * Call once at app boot. Subsequent calls replace the previous config.
+ *
+ * @example
+ * ```ts
+ * configureApi({
+ *   baseUrl: "https://api.example.com",
+ *   credentials: "include",
+ *   prepareHeaders: (headers) => {
+ *     headers.set("Authorization", `Bearer ${getToken()}`);
+ *   },
+ * });
+ * ```
+ */
+export function configureApi(config: ApiConfig): void {
+  _apiConfig = config;
+}
+
+/** Reset API config. @internal Test-only. */
+export function _resetApiConfigForTest(): void {
+  _apiConfig = {};
+}
+
+// ---------------------------------------------------------------------------
+
+/** Caller-facing shape of an apiAction definition. Replaces `run` with
+ *  a `request` function that returns an HTTP {@link RequestSpec}. */
+export interface ApiActionDefinition<TArgs, TResult, TOp = unknown> extends Omit<
   ActionDefinition<TArgs, TResult, TOp>,
   "run"
 > {
@@ -28,6 +85,8 @@ interface ApiActionDefinition<TArgs, TResult, TOp = unknown> extends Omit<
 
 /**
  * Build an Action from an HTTP request descriptor.
+ * Wraps `defineAction` with a generated `run()` that calls `fetch`
+ * via the global {@link ApiConfig} layer configured with {@link configureApi}.
  */
 export function apiAction<TArgs, TResult = unknown, TOp = unknown>(
   def: ApiActionDefinition<TArgs, TResult, TOp>,
@@ -47,22 +106,60 @@ async function executeRequest<T>(
   signal: AbortSignal,
   ctx?: ActionContext,
 ): Promise<T> {
+  const cfg = _apiConfig;
   const init: RequestInit = { method: spec.method };
-  const headers: Record<string, string> = {};
+
+  // Build headers via Headers API for prepareHeaders compatibility
+  const headers = new Headers();
   if (spec.method !== "GET" && spec.body !== undefined) {
-    Object.assign(headers, JSON_HEADERS);
+    headers.set("Content-Type", JSON_CT);
     init.body = JSON.stringify(spec.body);
   }
   if (ctx?.idempotencyKey !== undefined) {
-    headers[IDEMPOTENCY_HEADER] = ctx.idempotencyKey;
+    headers.set(IDEMPOTENCY_HEADER, ctx.idempotencyKey);
   }
-  if (Object.keys(headers).length > 0) {
-    init.headers = headers;
+  // Per-request headers from RequestSpec
+  if (spec.headers !== undefined) {
+    for (const [k, v] of Object.entries(spec.headers)) {
+      headers.set(k, v);
+    }
   }
+  // Global prepareHeaders hook
+  if (cfg.prepareHeaders !== undefined) {
+    await cfg.prepareHeaders(headers, { spec });
+  }
+  // Convert Headers to plain object for RequestInit
+  const headerObj: Record<string, string> = {};
+  headers.forEach((v, k) => {
+    headerObj[k.toLowerCase()] = v;
+  });
+  if (Object.keys(headerObj).length > 0) {
+    init.headers = headerObj;
+  }
+
+  // Credentials
+  if (cfg.credentials !== undefined) {
+    init.credentials = cfg.credentials;
+  }
+
   init.signal = withTimeout(signal, API_TIMEOUT_MS);
+
+  // Resolve URL: prepend baseUrl if configured, normalizing double slashes at the join
+  let url: string;
+  if (cfg.baseUrl !== undefined) {
+    const base = cfg.baseUrl.endsWith("/") ? cfg.baseUrl.slice(0, -1) : cfg.baseUrl;
+    const path = spec.path.startsWith("/") ? spec.path : `/${spec.path}`;
+    url = `${base}${path}`;
+  } else {
+    url = spec.path;
+  }
+
+  // Use custom fetchFn or global fetch
+  const fetchImpl = cfg.fetchFn ?? fetch;
+
   let r: Response;
   try {
-    r = await fetch(spec.path, init);
+    r = await fetchImpl(url, init);
   } catch (e) {
     throw classifyFetchError(e, signal);
   }

@@ -1,18 +1,33 @@
 // debouncedDispatch: wrap an Action so that rapid calls coalesce into
-// a single dispatch after a quiet window.
+// a single dispatch after a quiet window. Replaces ad-hoc setTimeout
+// + clearTimeout chains with a single helper that adds flush/cancel.
 // ---------------------------------------------------------------------------
 
 import type { Action } from "./types.js";
 
+/** A debounced action dispatcher. Callable to schedule a dispatch,
+ *  with `flush`, `cancel`, and `isPending` control methods. */
 export interface DebouncedDispatch<TArgs> {
+  /** Schedule a dispatch with the given args. Replaces any pending
+   *  dispatch's args. */
   (args: TArgs): void;
+
+  /** Fire immediately with the most-recent args (or args supplied
+   *  here, overriding the pending). No-op if nothing is pending and
+   *  no args supplied. */
   flush(args?: TArgs): Promise<unknown> | undefined;
+
+  /** Discard any pending dispatch without firing. */
   cancel(): void;
+
+  /** True if there's a scheduled dispatch waiting for the timer. */
   isPending(): boolean;
 }
 
 interface DebounceOptions {
+  /** Quiet window in ms. */
   readonly wait: number;
+  /** Fire on the leading edge instead of the trailing edge. Default false. */
   readonly leading?: boolean;
 }
 

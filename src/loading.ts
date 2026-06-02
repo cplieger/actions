@@ -1,9 +1,18 @@
 // bindLoadingState: bind a button or input element's disabled / aria-busy
 // state to one or more named actions' pending count.
+//
+// While ANY of the named actions is pending, the element gets:
+//   - disabled = true
+//   - aria-busy = "true"  (omit by passing { ariaBusy: false })
+//   - optionally an extra CSS class via { pendingClass: "btn-loading" }
+//
+// Returns an unsubscribe function. Call it from the view's teardown
+// hook to stop receiving updates and avoid leaking listeners.
 // ---------------------------------------------------------------------------
 
 import { subscribeByName, isPending, pendingCount } from "./registry.js";
 
+/** Element types that have a `.disabled` writable boolean. */
 type DisableableElement =
   | HTMLButtonElement
   | HTMLInputElement

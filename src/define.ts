@@ -12,7 +12,7 @@ import {
   safeStringify,
   _symbolMap,
   _resetSymbols,
-  resolveToast,
+  resolveNotification,
   defaultErrorPrefix,
 } from "./define-helpers.js";
 import type {
@@ -20,6 +20,7 @@ import type {
   ActionContext,
   ActionDefinition,
   ActionErrorLike,
+  DispatchHandle,
   DispatchOptions,
 } from "./types.js";
 
@@ -29,6 +30,15 @@ const NO_OPTS = Object.freeze({}) as DispatchOptions;
 const NOOP = (): void => {
   /* noop */
 };
+
+/** Create the appropriate DOMException for an aborted signal, preserving
+ *  TimeoutError when the signal was aborted by AbortSignal.timeout(). */
+function signalAbortError(signal: AbortSignal): DOMException {
+  if (signal.reason instanceof DOMException && signal.reason.name === "TimeoutError") {
+    return signal.reason;
+  }
+  return new DOMException("aborted", "AbortError");
+}
 
 function nextInstanceID(name: string): string {
   instanceCounter += 1;
@@ -45,6 +55,13 @@ function generateIdempotencyKey(): string {
 }
 
 const scopeChains = new Map<string, Promise<unknown>>();
+
+/** Create a DispatchHandle: a Promise augmented with abort(). */
+function makeHandle<T>(promise: Promise<T | null>, abortFn: () => void): DispatchHandle<T> {
+  const handle = promise as DispatchHandle<T>;
+  handle.abort = abortFn;
+  return handle;
+}
 
 interface DedupeSlot {
   promise: Promise<unknown> | undefined;
@@ -66,10 +83,35 @@ export function defineAction<TArgs, TResult, TOp = unknown>(
   const scopeCancelResolvers = new Map<string, () => void>();
   const activeDedupeKeys = new Set<string>();
 
+  function fireDefSuccess(result: TResult, args: TArgs): void {
+    if (def.onSuccess) {
+      const cb = def.onSuccess;
+      safeInvoke(def.name, "def.onSuccess", () => {
+        cb(result, args);
+      });
+    }
+  }
+  function fireDefError(err: ActionErrorLike, args: TArgs): void {
+    if (def.onError) {
+      const cb = def.onError;
+      safeInvoke(def.name, "def.onError", () => {
+        cb(err, args);
+      });
+    }
+  }
+  function fireDefSettled(args: TArgs): void {
+    if (def.onSettled) {
+      const cb = def.onSettled;
+      safeInvoke(def.name, "def.onSettled", () => {
+        cb(args);
+      });
+    }
+  }
+
   function dispatch(
     args: TArgs,
     opts: DispatchOptions<TArgs, TResult> = NO_OPTS,
-  ): Promise<TResult | null> {
+  ): DispatchHandle<TResult> {
     const dedupeKey = dedupeKeyFor(args);
     if (dedupeKey !== null) {
       const entry = activeDedupes.get(dedupeKey);
@@ -82,9 +124,9 @@ export function defineAction<TArgs, TResult, TOp = unknown>(
               onSettledCb(args);
             });
           }
-          return Promise.resolve(null);
+          return makeHandle(Promise.resolve(null) as Promise<TResult | null>, NOOP);
         }
-        return (shared as Promise<TResult | null>).then(
+        const joined = (shared as Promise<TResult | null>).then(
           (v) => {
             if (v !== null) {
               const onSuccessCb = opts.onSuccess;
@@ -127,6 +169,7 @@ export function defineAction<TArgs, TResult, TOp = unknown>(
             return null;
           },
         );
+        return makeHandle(joined, NOOP);
       }
     }
 
@@ -191,6 +234,7 @@ export function defineAction<TArgs, TResult, TOp = unknown>(
             completedAt: now,
           });
         } finally {
+          fireDefSettled(args);
           const onSettledCb = opts.onSettled;
           if (onSettledCb) {
             safeInvoke(def.name, "onSettled", () => {
@@ -215,7 +259,9 @@ export function defineAction<TArgs, TResult, TOp = unknown>(
       });
     }
 
-    return result;
+    return makeHandle(result, () => {
+      ac.abort();
+    });
   }
 
   function dedupeKeyFor(args: TArgs): string | null {
@@ -274,6 +320,7 @@ export function defineAction<TArgs, TResult, TOp = unknown>(
         startedAt: now,
         completedAt: now,
       });
+      fireDefSettled(args);
       settle();
       return null;
     }
@@ -288,6 +335,12 @@ export function defineAction<TArgs, TResult, TOp = unknown>(
           : null;
     const ctx: ActionContext =
       idemKey !== null ? { instanceID: id, idempotencyKey: idemKey } : { instanceID: id };
+
+    // Compose timeout signal if configured
+    const runSignal =
+      def.timeout !== undefined
+        ? AbortSignal.any([ac.signal, AbortSignal.timeout(def.timeout)])
+        : ac.signal;
 
     let optOp: TOp | undefined;
     if (def.optimistic !== undefined) {
@@ -312,12 +365,14 @@ export function defineAction<TArgs, TResult, TOp = unknown>(
           error: err,
         });
         emitErrorToast(args, err);
+        fireDefError(err, args);
         const onErrorCb = opts.onError;
         if (onErrorCb) {
           safeInvoke(def.name, "onError", () => {
             onErrorCb(err, args);
           });
         }
+        fireDefSettled(args);
         settle();
         return null;
       }
@@ -333,7 +388,7 @@ export function defineAction<TArgs, TResult, TOp = unknown>(
     });
 
     try {
-      const { result, attempts } = await runWithRetry(args, ac.signal, ctx);
+      const { result, attempts } = await runWithRetry(args, runSignal, ctx);
       // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- signal state changes during async
       if (ac.signal.aborted) {
         if (dedupeEntry !== null) {
@@ -357,6 +412,7 @@ export function defineAction<TArgs, TResult, TOp = unknown>(
             console.error(`[actions] rollback (cancellation) for ${def.name} threw`, e);
           }
         }
+        fireDefSettled(args);
         return null;
       }
       record({
@@ -372,12 +428,14 @@ export function defineAction<TArgs, TResult, TOp = unknown>(
       });
       evictDedupeSlot(dedupeKey, dedupeEntry);
       emitSuccessToast(args, result, opts);
+      fireDefSuccess(result, args);
       const onSuccessCb = opts.onSuccess;
       if (onSuccessCb) {
         safeInvoke(def.name, "onSuccess", () => {
           onSuccessCb(result, args);
         });
       }
+      fireDefSettled(args);
       return result;
     } catch (e: unknown) {
       const err = toActionError(e);
@@ -413,6 +471,7 @@ export function defineAction<TArgs, TResult, TOp = unknown>(
       }
       if (!cancelled) {
         emitErrorToast(args, err);
+        fireDefError(err, args);
         const onErrorCb = opts.onError;
         if (onErrorCb) {
           safeInvoke(def.name, "onError", () => {
@@ -420,6 +479,7 @@ export function defineAction<TArgs, TResult, TOp = unknown>(
           });
         }
       }
+      fireDefSettled(args);
       return null;
     } finally {
       settle();
@@ -440,7 +500,7 @@ export function defineAction<TArgs, TResult, TOp = unknown>(
     // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- intentional infinite loop with throw exits
     while (true) {
       if (signal.aborted) {
-        const abortErr = new DOMException("aborted", "AbortError");
+        const abortErr = signalAbortError(signal);
         attachAttempts(abortErr, attempt);
         throw abortErr;
       }
@@ -468,7 +528,7 @@ export function defineAction<TArgs, TResult, TOp = unknown>(
           try {
             await waitForOnline(signal);
           } catch {
-            const abortErr = new DOMException("aborted", "AbortError");
+            const abortErr = signalAbortError(signal);
             attachAttempts(abortErr, attempt);
             throw abortErr;
           }
@@ -490,7 +550,7 @@ export function defineAction<TArgs, TResult, TOp = unknown>(
         try {
           await sleep(delayMs, signal);
         } catch {
-          const abortErr = new DOMException("aborted", "AbortError");
+          const abortErr = signalAbortError(signal);
           attachAttempts(abortErr, attempt);
           throw abortErr;
         }
@@ -518,7 +578,7 @@ export function defineAction<TArgs, TResult, TOp = unknown>(
       return;
     }
     try {
-      const msg = resolveToast(def.success, args, result);
+      const msg = resolveNotification(def.success, args, result);
       if (msg !== null) {
         notifySuccess(msg);
       }

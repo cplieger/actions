@@ -343,7 +343,7 @@ describe("pollAction — onSuccess callback", () => {
       name: "test.poll.onSuccess_throws",
       run: async () => ++count,
     });
-    // eslint-disable-next-line @typescript-eslint/no-empty-function -- intentional mock
+
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
     const onSuccess = vi.fn<(n: number) => void>(() => {
       throw new Error("kaboom");

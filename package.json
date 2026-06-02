@@ -2,10 +2,16 @@
   "name": "@cplieger/actions",
   "version": "0.1.0",
   "type": "module",
+  "sideEffects": false,
   "exports": {
-    ".": "./src/index.ts"
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js"
+    }
   },
   "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "prepublishOnly": "npm run build",
     "typecheck": "tsgo -project tsconfig.json",
     "typecheck:tests": "tsgo -project tsconfig.test.json",
     "test": "vitest --run"
