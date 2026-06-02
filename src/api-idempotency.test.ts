@@ -39,8 +39,9 @@ describe("apiAction — idempotency key", () => {
     });
     await action.dispatch({ id: "abc" });
     const [, opts] = mockFetch.mock.calls[0]!;
-    expect(opts.headers[IDEMPOTENCY_HEADER]).toEqual(expect.any(String));
-    expect(opts.headers[IDEMPOTENCY_HEADER].length).toBeGreaterThan(5);
+    const hdrKey = IDEMPOTENCY_HEADER.toLowerCase();
+    expect(opts.headers[hdrKey]).toEqual(expect.any(String));
+    expect(opts.headers[hdrKey].length).toBeGreaterThan(5);
   });
 
   it("does NOT send Idempotency-Key when not configured", async () => {
@@ -52,7 +53,7 @@ describe("apiAction — idempotency key", () => {
     });
     await action.dispatch(undefined);
     const [, opts] = mockFetch.mock.calls[0]!;
-    expect(opts.headers?.[IDEMPOTENCY_HEADER]).toBeUndefined();
+    expect(opts.headers?.[IDEMPOTENCY_HEADER.toLowerCase()]).toBeUndefined();
   });
 
   it("idempotencyKey function receives args", async () => {
@@ -65,7 +66,7 @@ describe("apiAction — idempotency key", () => {
     });
     await action.dispatch({ id: "xyz" });
     const [, opts] = mockFetch.mock.calls[0]!;
-    expect(opts.headers[IDEMPOTENCY_HEADER]).toBe("custom-xyz");
+    expect(opts.headers[IDEMPOTENCY_HEADER.toLowerCase()]).toBe("custom-xyz");
   });
 });
 

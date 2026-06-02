@@ -1,12 +1,28 @@
 // ActionError: thrown by an action's run() function to signal a typed
 // failure. Carries optional HTTP status, server-side error code, and
 // cause chain for diagnostics.
+//
+// Public surface:
+//   - ActionError       : structured error class
+//   - hasErrorString    : narrows parsed JSON bodies with `{ error: "..." }`
+//   - classifyFetchError: normalize fetch catch-block errors
+//   - retryNetwork      : preset classifier — network/timeout/transient HTTP
+//
+// Internal:
+//   - toActionError: coerce thrown values into ActionErrorLike (used by define.ts)
 // ---------------------------------------------------------------------------
 
 import type { ActionErrorLike } from "./types.js";
 
 /**
  * Structured error thrown from an action's `run()` to signal a typed failure.
+ * Carries optional HTTP status and server-side error code for downstream
+ * classification (retry eligibility, notification formatting, telemetry).
+ *
+ * @example
+ * ```ts
+ * throw new ActionError("Server rejected", { status: 409, code: "conflict" });
+ * ```
  */
 export class ActionError extends Error implements ActionErrorLike {
   readonly status?: number;
@@ -121,6 +137,12 @@ export function toActionError(e: unknown): ActionErrorLike {
 
 /**
  * Classify a caught fetch error into an ActionError with a canonical code.
+ *
+ * Classification priority:
+ *  1. Signal already aborted → "cancelled"
+ *  2. DOMException TimeoutError / AbortError with live signal → "timeout"
+ *  3. TypeError → "network" (browsers throw TypeError for network failures)
+ *  4. Everything else → "network"
  */
 export function classifyFetchError(e: unknown, signal: AbortSignal): ActionError {
   if (signal.aborted) {

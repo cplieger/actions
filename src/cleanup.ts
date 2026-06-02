@@ -1,9 +1,14 @@
 // Global cleanup: cancel all in-flight actions + run registered
-// cleanup hooks. Wired to window.beforeunload.
+// cleanup hooks. Wired to window.beforeunload so navigation away
+// from the page aborts everything cleanly.
+//
+// Cleanup hooks must be idempotent. Cancellation is allowed to fire
+// multiple times (e.g., cancelled navigation followed by confirmed).
 // ---------------------------------------------------------------------------
 
 import type { Action } from "./types.js";
 
+/** Minimal shape needed for cleanup — avoids variance-unsafe casts. */
 interface Cancellable {
   readonly name: string;
   cancel(): void;

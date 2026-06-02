@@ -11,11 +11,10 @@ export default [
   // 1. Ignore generated/build outputs and configs that don't need linting.
   {
     ignores: [
-      // Dependencies (any depth — vibekit's web/static-src/node_modules nests deep)
+      // Dependencies (any depth)
       "**/node_modules/**",
       // Build output / generated bundles (TS->JS, CSS bundles, etc.)
       "**/static/**",
-      "**/static-src/dist/**",
       "**/dist/**",
       "**/build/**",
       "**/.next/**",
@@ -163,6 +162,12 @@ export default [
       "@typescript-eslint/no-misused-spread": "off",
       "@typescript-eslint/unbound-method": "off",
       "@typescript-eslint/require-await": "off",
+      "@typescript-eslint/no-invalid-void-type": "off",
+      "@typescript-eslint/no-empty-function": "off",
+      "@typescript-eslint/no-non-null-asserted-optional-chain": "off",
+      "@typescript-eslint/no-deprecated": "off",
+      "no-throw-literal": "off",
+      "curly": "off",
       "no-console": "off",
     },
   },

@@ -1,14 +1,23 @@
-// pollAction: repeat-an-action-on-interval primitive.
+// pollAction: repeat-an-action-on-interval primitive that integrates with
+// the framework lifecycle. Adds pause-when-hidden, refresh-on-focus,
+// exponential backoff on consecutive failures, and auto cleanup.
 // ---------------------------------------------------------------------------
 
 import { registerCleanup } from "./cleanup.js";
 import type { Action } from "./types.js";
 
+/** Configuration for {@link pollAction}. Controls interval timing,
+ *  visibility-pause behavior, focus-refresh, and error backoff. */
 export interface PollOptions<TResult = unknown> {
+  /** Quiet window between polls in ms. */
   readonly interval: number;
+  /** When true (default), polls pause while document.hidden === true. */
   readonly pauseWhenHidden?: boolean;
+  /** When true (default), fire an immediate poll on window focus. */
   readonly refreshOnFocus?: boolean;
+  /** Exponential backoff on consecutive failures. */
   readonly backoffOnError?: { readonly factor: number; readonly max: number };
+  /** Per-poll success callback. */
   readonly onSuccess?: (result: TResult) => void;
 }
 
