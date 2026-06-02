@@ -86,19 +86,25 @@ export function defineAction<TArgs, TResult, TOp = unknown>(
   function fireDefSuccess(result: TResult, args: TArgs): void {
     if (def.onSuccess) {
       const cb = def.onSuccess;
-      safeInvoke(def.name, "def.onSuccess", () => { cb(result, args); });
+      safeInvoke(def.name, "def.onSuccess", () => {
+        cb(result, args);
+      });
     }
   }
   function fireDefError(err: ActionErrorLike, args: TArgs): void {
     if (def.onError) {
       const cb = def.onError;
-      safeInvoke(def.name, "def.onError", () => { cb(err, args); });
+      safeInvoke(def.name, "def.onError", () => {
+        cb(err, args);
+      });
     }
   }
   function fireDefSettled(args: TArgs): void {
     if (def.onSettled) {
       const cb = def.onSettled;
-      safeInvoke(def.name, "def.onSettled", () => { cb(args); });
+      safeInvoke(def.name, "def.onSettled", () => {
+        cb(args);
+      });
     }
   }
 
@@ -253,7 +259,9 @@ export function defineAction<TArgs, TResult, TOp = unknown>(
       });
     }
 
-    return makeHandle(result, () => { ac.abort(); });
+    return makeHandle(result, () => {
+      ac.abort();
+    });
   }
 
   function dedupeKeyFor(args: TArgs): string | null {
@@ -329,9 +337,10 @@ export function defineAction<TArgs, TResult, TOp = unknown>(
       idemKey !== null ? { instanceID: id, idempotencyKey: idemKey } : { instanceID: id };
 
     // Compose timeout signal if configured
-    const runSignal = def.timeout !== undefined
-      ? AbortSignal.any([ac.signal, AbortSignal.timeout(def.timeout)])
-      : ac.signal;
+    const runSignal =
+      def.timeout !== undefined
+        ? AbortSignal.any([ac.signal, AbortSignal.timeout(def.timeout)])
+        : ac.signal;
 
     let optOp: TOp | undefined;
     if (def.optimistic !== undefined) {

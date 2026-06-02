@@ -72,7 +72,10 @@ describe("lifecycle race matrix", () => {
     const action = defineAction({
       name: "race.dedupe.abort",
       dedupe: true,
-      run: () => new Promise<string>((r) => { leaderResolve = r; }),
+      run: () =>
+        new Promise<string>((r) => {
+          leaderResolve = r;
+        }),
     });
     const h1 = action.dispatch("a");
     const onError2 = vi.fn();
@@ -98,7 +101,9 @@ describe("lifecycle race matrix", () => {
       scope: "cancel-scope",
       run: (args, _signal) => {
         if (args === "blocker") {
-          return new Promise<string>((r) => { blockerResolve = r; });
+          return new Promise<string>((r) => {
+            blockerResolve = r;
+          });
         }
         runSpy();
         return Promise.resolve("target-done");
@@ -123,7 +128,10 @@ describe("lifecycle race matrix", () => {
     let callCount = 0;
     const action = defineAction({
       name: "race.rapid",
-      run: async () => { callCount++; return callCount; },
+      run: async () => {
+        callCount++;
+        return callCount;
+      },
     });
     const h1 = action.dispatch("a");
     h1.abort();
@@ -303,7 +311,10 @@ describe("registry bounds under load", () => {
     const resolvers: ((v: string) => void)[] = [];
     const action = defineAction({
       name: "reg.pending",
-      run: () => new Promise<string>((r) => { resolvers.push(r); }),
+      run: () =>
+        new Promise<string>((r) => {
+          resolvers.push(r);
+        }),
     });
     // Dispatch 10 concurrent
     for (let i = 0; i < 10; i++) {
@@ -333,7 +344,10 @@ describe("registry bounds under load", () => {
     let pendingResolve!: (v: string) => void;
     const slowAction = defineAction({
       name: "reg.evict.slow",
-      run: () => new Promise<string>((r) => { pendingResolve = r; }),
+      run: () =>
+        new Promise<string>((r) => {
+          pendingResolve = r;
+        }),
     });
     const fastAction = defineAction({
       name: "reg.evict.fast",
@@ -375,13 +389,16 @@ describe("verify round 1-2 fixes", () => {
     const action = defineAction({
       name: "verify.timeout.code",
       timeout: 10,
-      run: (_a, signal) => new Promise<string>((_resolve, reject) => {
-        signal.addEventListener("abort", () => reject(signal.reason), { once: true });
-      }),
+      run: (_a, signal) =>
+        new Promise<string>((_resolve, reject) => {
+          signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+        }),
     });
     const result = await action.dispatch("x");
     expect(result).toBeNull();
-    const entry = recentLog().find((e) => e.name === "verify.timeout.code" && e.status !== "pending");
+    const entry = recentLog().find(
+      (e) => e.name === "verify.timeout.code" && e.status !== "pending",
+    );
     expect(entry).toBeDefined();
     // Must be error with timeout code, not cancelled
     expect(entry!.status).toBe("error");
@@ -418,7 +435,9 @@ describe("scope chain cleanup", () => {
       scope: "cancel-scope-2",
       run: (args) => {
         if (args === "first") {
-          return new Promise<string>((r) => { resolve1 = r; });
+          return new Promise<string>((r) => {
+            resolve1 = r;
+          });
         }
         return Promise.resolve("second-ok");
       },

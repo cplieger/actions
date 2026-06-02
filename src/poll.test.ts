@@ -343,7 +343,7 @@ describe("pollAction — onSuccess callback", () => {
       name: "test.poll.onSuccess_throws",
       run: async () => ++count,
     });
-     
+
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
     const onSuccess = vi.fn<(n: number) => void>(() => {
       throw new Error("kaboom");

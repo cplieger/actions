@@ -1,16 +1,33 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { resetActionFramework } from "./__test-helpers__/action-test-setup.js";
-vi.mock("./notifier.js", () => ({ configure: vi.fn(), notifySuccess: vi.fn(), notifyError: vi.fn(), _resetNotifierForTest: vi.fn() }));
+vi.mock("./notifier.js", () => ({
+  configure: vi.fn(),
+  notifySuccess: vi.fn(),
+  notifyError: vi.fn(),
+  _resetNotifierForTest: vi.fn(),
+}));
 import { defineAction } from "./define.js";
 import { registerCleanup, _cancelAllForTest as cancelAllPending } from "./cleanup.js";
 
-beforeEach(() => { resetActionFramework(); vi.clearAllMocks(); });
+beforeEach(() => {
+  resetActionFramework();
+  vi.clearAllMocks();
+});
 
 describe("cancelAllPending + registered cleanup", () => {
   it("aborts in-flight action via action.cancel() on global cleanup", async () => {
     let aborted = false;
-    const action = defineAction({ name: "test.cleanup1", run: (_args, signal) => new Promise<void>((_, reject) => { signal.addEventListener("abort", () => { aborted = true; reject(new Error("aborted")); }); }) });
+    const action = defineAction({
+      name: "test.cleanup1",
+      run: (_args, signal) =>
+        new Promise<void>((_, reject) => {
+          signal.addEventListener("abort", () => {
+            aborted = true;
+            reject(new Error("aborted"));
+          });
+        }),
+    });
     const p = action.dispatch({});
     cancelAllPending();
     await p;
@@ -36,7 +53,9 @@ describe("cancelAllPending + registered cleanup", () => {
   });
 
   it("a throwing cleanup hook does not stop other hooks", () => {
-    const fn1 = vi.fn(() => { throw new Error("bad"); });
+    const fn1 = vi.fn(() => {
+      throw new Error("bad");
+    });
     const fn2 = vi.fn();
     const consoleErr = vi.spyOn(console, "error").mockImplementation(() => undefined);
     registerCleanup(fn1);
@@ -50,8 +69,26 @@ describe("cancelAllPending + registered cleanup", () => {
   it("cancels multiple actions and runs hooks in one cancelAllPending call", async () => {
     let abort1 = false;
     let abort2 = false;
-    const a1 = defineAction({ name: "test.cleanup-multi-1", run: (_args, signal) => new Promise<void>((_, reject) => { signal.addEventListener("abort", () => { abort1 = true; reject(new Error("aborted")); }); }) });
-    const a2 = defineAction({ name: "test.cleanup-multi-2", run: (_args, signal) => new Promise<void>((_, reject) => { signal.addEventListener("abort", () => { abort2 = true; reject(new Error("aborted")); }); }) });
+    const a1 = defineAction({
+      name: "test.cleanup-multi-1",
+      run: (_args, signal) =>
+        new Promise<void>((_, reject) => {
+          signal.addEventListener("abort", () => {
+            abort1 = true;
+            reject(new Error("aborted"));
+          });
+        }),
+    });
+    const a2 = defineAction({
+      name: "test.cleanup-multi-2",
+      run: (_args, signal) =>
+        new Promise<void>((_, reject) => {
+          signal.addEventListener("abort", () => {
+            abort2 = true;
+            reject(new Error("aborted"));
+          });
+        }),
+    });
     const hook = vi.fn();
     registerCleanup(hook);
     const p1 = a1.dispatch({});

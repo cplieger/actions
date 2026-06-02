@@ -49,8 +49,10 @@ export function _resetTransportForTest(): void {
 /** Caller-facing shape of a transportAction definition. `command`
  *  replaces `run`. Result is `void` because transport.send does not
  *  return a payload (the response arrives later via SSE events). */
-interface TransportActionDefinition<TArgs, TOp = unknown>
-  extends Omit<ActionDefinition<TArgs, void, TOp>, "run"> {
+interface TransportActionDefinition<TArgs, TOp = unknown> extends Omit<
+  ActionDefinition<TArgs, void, TOp>,
+  "run"
+> {
   /** Build the command for this dispatch. Re-evaluated per-dispatch. */
   command: (args: TArgs) => TransportCommand;
 }

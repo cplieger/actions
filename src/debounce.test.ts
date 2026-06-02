@@ -1,12 +1,22 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi, beforeEach } from "vitest";
-vi.mock("./notifier.js", () => ({ configure: vi.fn(), notifySuccess: vi.fn(), notifyError: vi.fn(), _resetNotifierForTest: vi.fn() }));
+vi.mock("./notifier.js", () => ({
+  configure: vi.fn(),
+  notifySuccess: vi.fn(),
+  notifyError: vi.fn(),
+  _resetNotifierForTest: vi.fn(),
+}));
 import { defineAction, _resetForTest as resetDefine } from "./define.js";
 import { _resetForTest as resetRegistry } from "./registry.js";
 import { _resetForTest as resetCleanup } from "./cleanup.js";
 import { debouncedDispatch } from "./debounce.js";
 
-beforeEach(() => { resetDefine(); resetRegistry(); resetCleanup(); vi.useFakeTimers(); });
+beforeEach(() => {
+  resetDefine();
+  resetRegistry();
+  resetCleanup();
+  vi.useFakeTimers();
+});
 
 function makeAction() {
   const run = vi.fn(async (args: string) => args);
@@ -27,7 +37,9 @@ describe("debouncedDispatch — trailing (default)", () => {
   it("coalesces rapid calls — only last args dispatched", () => {
     const { action, run } = makeAction();
     const debounced = debouncedDispatch(action, { wait: 50 });
-    debounced("a"); debounced("b"); debounced("c");
+    debounced("a");
+    debounced("b");
+    debounced("c");
     vi.advanceTimersByTime(50);
     expect(run).toHaveBeenCalledTimes(1);
     expect(run).toHaveBeenCalledWith("c", expect.anything(), expect.anything());
@@ -80,7 +92,9 @@ describe("debouncedDispatch — leading", () => {
   it("suppresses calls within the cooldown window", () => {
     const { action, run } = makeAction();
     const debounced = debouncedDispatch(action, { wait: 100, leading: true });
-    debounced("a"); debounced("b"); debounced("c");
+    debounced("a");
+    debounced("b");
+    debounced("c");
     expect(run).toHaveBeenCalledTimes(1);
     expect(run).toHaveBeenCalledWith("a", expect.anything(), expect.anything());
   });
@@ -88,7 +102,8 @@ describe("debouncedDispatch — leading", () => {
   it("fires trailing with last suppressed args after cooldown", () => {
     const { action, run } = makeAction();
     const debounced = debouncedDispatch(action, { wait: 100, leading: true });
-    debounced("a"); debounced("b");
+    debounced("a");
+    debounced("b");
     vi.advanceTimersByTime(100);
     expect(run).toHaveBeenCalledTimes(2);
     expect(run).toHaveBeenLastCalledWith("b", expect.anything(), expect.anything());
@@ -97,7 +112,8 @@ describe("debouncedDispatch — leading", () => {
   it("cancel after leading fire prevents trailing fire", () => {
     const { action, run } = makeAction();
     const debounced = debouncedDispatch(action, { wait: 100, leading: true });
-    debounced("a"); debounced("b");
+    debounced("a");
+    debounced("b");
     debounced.cancel();
     vi.advanceTimersByTime(200);
     expect(run).toHaveBeenCalledTimes(1);

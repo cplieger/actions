@@ -162,7 +162,10 @@ describe("DispatchHandle.abort before run starts", () => {
     const blocker = defineAction({
       name: "abort.pre.blocker2",
       scope: "abort-pre-scope2",
-      run: () => new Promise<string>((resolve) => { blockerResolve = resolve; }),
+      run: () =>
+        new Promise<string>((resolve) => {
+          blockerResolve = resolve;
+        }),
     });
     const target = defineAction({
       name: "abort.pre.target2",
@@ -248,8 +251,12 @@ describe("registry listener throwing", () => {
   it("throwing listener does not prevent subsequent listeners from firing", async () => {
     const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     const results: string[] = [];
-    subscribe(() => { throw new Error("listener boom"); });
-    subscribe((inst) => { results.push(inst.status); });
+    subscribe(() => {
+      throw new Error("listener boom");
+    });
+    subscribe((inst) => {
+      results.push(inst.status);
+    });
     const action = defineAction({ name: "listener.throw", run: async () => "ok" });
     await action.dispatch("x");
     expect(results).toContain("pending");
@@ -277,7 +284,9 @@ describe("scope serialization", () => {
         // Dispatch B from within A — B will queue behind A
         // Do NOT await it here (that would deadlock by design)
         const handleB = actionB.dispatch("b");
-        void handleB.then((r) => { innerResult = r; });
+        void handleB.then((r) => {
+          innerResult = r;
+        });
         return "A-done";
       },
     });
@@ -296,7 +305,9 @@ describe("abort during prepareHeaders", () => {
   it("abort signal checked after prepareHeaders — cancelled if aborted during prep", async () => {
     let _prepDone = false;
     let prepResolve!: () => void;
-    const prepPromise = new Promise<void>((r) => { prepResolve = r; });
+    const prepPromise = new Promise<void>((r) => {
+      prepResolve = r;
+    });
     configureApi({
       prepareHeaders: async (headers) => {
         await prepPromise;

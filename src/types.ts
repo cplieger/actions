@@ -181,7 +181,11 @@ export interface DispatchOptions<TArgs = unknown, TResult = unknown> {
 /** HTTP request descriptor used by apiAction(). GET is included for
  *  read actions that want notification/cancellation semantics. */
 export type RequestSpec =
-  | { readonly method: "GET"; readonly path: string; readonly headers?: Readonly<Record<string, string>> }
+  | {
+      readonly method: "GET";
+      readonly path: string;
+      readonly headers?: Readonly<Record<string, string>>;
+    }
   | {
       readonly method: "POST" | "PUT" | "PATCH" | "DELETE";
       readonly path: string;

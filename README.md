@@ -69,6 +69,7 @@ configureApi({
 ```
 
 Options (mirrors RTK `fetchBaseQuery`):
+
 - `baseUrl` — prepended to every `RequestSpec.path`
 - `prepareHeaders(headers, { spec })` — inject headers per-request (may be async)
 - `credentials` — `RequestInit.credentials` mode (e.g. `"include"` for cookies)
@@ -155,20 +156,20 @@ const slow = defineAction({
 
 The following features are intentionally not implemented:
 
-| Feature | Reason |
-|---------|--------|
-| Query caching / stale-while-revalidate | Out of paradigm — this is an action runner, not a data cache. Use TanStack Query alongside. |
-| Cache invalidation / revalidation | Data-cache concern, out of scope. |
-| Framework adapters (React/Vue/Svelte) | Vanilla TS by design. Framework bindings belong in separate packages. |
-| Visual DevTools panel | Separate package concern. The registry API (`getActionLog`, `subscribeByName`) provides the data. |
-| SSR / hydration | Actions are imperative mutations — nothing to serialize across server→client. |
-| Debounce `maxWait` | Deliberate simplification. Use `flush()` for guaranteed-fire semantics. |
-| Throttle helper | Not action-specific. Consumers can throttle before calling `dispatch()`. |
-| `condition` / pre-execution guard | Trivially implemented by callers with `if`. `dedupe` covers the primary use case. |
-| Typed discriminated-union result | The callback model (onSuccess/onError/onSettled) is the chosen API shape. |
-| `onProgress` callback | Transport-specific. Consumers wire progress in their `run()` implementation. |
-| Batch dispatch | Store-level concern. This library doesn't own a store. |
-| `dispose()` / action deregistration | Actions are lightweight when idle. Not a leak concern for realistic app sizes. |
+| Feature                                | Reason                                                                                            |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| Query caching / stale-while-revalidate | Out of paradigm — this is an action runner, not a data cache. Use TanStack Query alongside.       |
+| Cache invalidation / revalidation      | Data-cache concern, out of scope.                                                                 |
+| Framework adapters (React/Vue/Svelte)  | Vanilla TS by design. Framework bindings belong in separate packages.                             |
+| Visual DevTools panel                  | Separate package concern. The registry API (`getActionLog`, `subscribeByName`) provides the data. |
+| SSR / hydration                        | Actions are imperative mutations — nothing to serialize across server→client.                     |
+| Debounce `maxWait`                     | Deliberate simplification. Use `flush()` for guaranteed-fire semantics.                           |
+| Throttle helper                        | Not action-specific. Consumers can throttle before calling `dispatch()`.                          |
+| `condition` / pre-execution guard      | Trivially implemented by callers with `if`. `dedupe` covers the primary use case.                 |
+| Typed discriminated-union result       | The callback model (onSuccess/onError/onSettled) is the chosen API shape.                         |
+| `onProgress` callback                  | Transport-specific. Consumers wire progress in their `run()` implementation.                      |
+| Batch dispatch                         | Store-level concern. This library doesn't own a store.                                            |
+| `dispose()` / action deregistration    | Actions are lightweight when idle. Not a leak concern for realistic app sizes.                    |
 
 ## License
 

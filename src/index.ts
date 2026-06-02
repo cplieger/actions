@@ -18,7 +18,13 @@ export type { ApiConfig, ApiActionDefinition } from "./api.js";
 export { ActionError, hasErrorString, classifyFetchError, retryNetwork } from "./error.js";
 
 // Registry
-export { subscribe as subscribeToActions, subscribeByName, getActionLog, pendingCount, isPending } from "./registry.js";
+export {
+  subscribe as subscribeToActions,
+  subscribeByName,
+  getActionLog,
+  pendingCount,
+  isPending,
+} from "./registry.js";
 
 // Loading-state helper
 export { bindLoadingState } from "./loading.js";

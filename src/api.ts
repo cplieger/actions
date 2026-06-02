@@ -130,7 +130,9 @@ async function executeRequest<T>(
   }
   // Convert Headers to plain object for RequestInit
   const headerObj: Record<string, string> = {};
-  headers.forEach((v, k) => { headerObj[k.toLowerCase()] = v; });
+  headers.forEach((v, k) => {
+    headerObj[k.toLowerCase()] = v;
+  });
   if (Object.keys(headerObj).length > 0) {
     init.headers = headerObj;
   }

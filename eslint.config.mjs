@@ -167,7 +167,7 @@ export default [
       "@typescript-eslint/no-non-null-asserted-optional-chain": "off",
       "@typescript-eslint/no-deprecated": "off",
       "no-throw-literal": "off",
-      "curly": "off",
+      curly: "off",
       "no-console": "off",
     },
   },

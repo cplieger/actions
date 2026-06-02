@@ -33,14 +33,20 @@ describe("configureApi — baseUrl", () => {
   it("prepends baseUrl to request path", async () => {
     configureApi({ baseUrl: "https://api.example.com/v1" });
     mockFetch.mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }));
-    const action = apiAction<string>({ name: "base.url", request: (id) => ({ method: "GET", path: `/items/${id}` }) });
+    const action = apiAction<string>({
+      name: "base.url",
+      request: (id) => ({ method: "GET", path: `/items/${id}` }),
+    });
     await action.dispatch("42");
     expect(mockFetch.mock.calls[0]![0]).toBe("https://api.example.com/v1/items/42");
   });
 
   it("works without baseUrl (relative path)", async () => {
     mockFetch.mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }));
-    const action = apiAction<string>({ name: "no.base", request: (id) => ({ method: "GET", path: `/items/${id}` }) });
+    const action = apiAction<string>({
+      name: "no.base",
+      request: (id) => ({ method: "GET", path: `/items/${id}` }),
+    });
     await action.dispatch("1");
     expect(mockFetch.mock.calls[0]![0]).toBe("/items/1");
   });
@@ -54,7 +60,10 @@ describe("configureApi — prepareHeaders", () => {
       },
     });
     mockFetch.mockResolvedValue(new Response(JSON.stringify({}), { status: 200 }));
-    const action = apiAction<string>({ name: "auth.header", request: () => ({ method: "GET", path: "/me" }) });
+    const action = apiAction<string>({
+      name: "auth.header",
+      request: () => ({ method: "GET", path: "/me" }),
+    });
     await action.dispatch("x");
     const headers = mockFetch.mock.calls[0]![1].headers as Record<string, string>;
     expect(headers["authorization"]).toBe("Bearer test-token");
@@ -68,7 +77,10 @@ describe("configureApi — prepareHeaders", () => {
       },
     });
     mockFetch.mockResolvedValue(new Response(JSON.stringify({}), { status: 200 }));
-    const action = apiAction<string>({ name: "async.header", request: () => ({ method: "GET", path: "/x" }) });
+    const action = apiAction<string>({
+      name: "async.header",
+      request: () => ({ method: "GET", path: "/x" }),
+    });
     await action.dispatch("x");
     const headers = mockFetch.mock.calls[0]![1].headers as Record<string, string>;
     expect(headers["x-csrf"]).toBe("async-token");
@@ -82,7 +94,10 @@ describe("configureApi — prepareHeaders", () => {
       },
     });
     mockFetch.mockResolvedValue(new Response(JSON.stringify({}), { status: 200 }));
-    const action = apiAction<string>({ name: "ctx.spec", request: (id) => ({ method: "POST", path: `/items/${id}`, body: { id } }) });
+    const action = apiAction<string>({
+      name: "ctx.spec",
+      request: (id) => ({ method: "POST", path: `/items/${id}`, body: { id } }),
+    });
     await action.dispatch("5");
     expect(spy).toHaveBeenCalledWith(expect.objectContaining({ method: "POST", path: "/items/5" }));
   });
@@ -113,14 +128,20 @@ describe("configureApi — credentials", () => {
   it("sets credentials on every request", async () => {
     configureApi({ credentials: "include" });
     mockFetch.mockResolvedValue(new Response(JSON.stringify({}), { status: 200 }));
-    const action = apiAction<string>({ name: "creds", request: () => ({ method: "GET", path: "/x" }) });
+    const action = apiAction<string>({
+      name: "creds",
+      request: () => ({ method: "GET", path: "/x" }),
+    });
     await action.dispatch("x");
     expect(mockFetch.mock.calls[0]![1].credentials).toBe("include");
   });
 
   it("omits credentials when not configured", async () => {
     mockFetch.mockResolvedValue(new Response(JSON.stringify({}), { status: 200 }));
-    const action = apiAction<string>({ name: "no.creds", request: () => ({ method: "GET", path: "/x" }) });
+    const action = apiAction<string>({
+      name: "no.creds",
+      request: () => ({ method: "GET", path: "/x" }),
+    });
     await action.dispatch("x");
     expect(mockFetch.mock.calls[0]![1].credentials).toBeUndefined();
   });
@@ -128,9 +149,14 @@ describe("configureApi — credentials", () => {
 
 describe("configureApi — fetchFn", () => {
   it("uses custom fetch implementation", async () => {
-    const customFetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ custom: true }), { status: 200 }));
+    const customFetch = vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify({ custom: true }), { status: 200 }));
     configureApi({ fetchFn: customFetch });
-    const action = apiAction<string>({ name: "custom.fetch", request: () => ({ method: "GET", path: "/x" }) });
+    const action = apiAction<string>({
+      name: "custom.fetch",
+      request: () => ({ method: "GET", path: "/x" }),
+    });
     const result = await action.dispatch("x");
     expect(customFetch).toHaveBeenCalled();
     expect(mockFetch).not.toHaveBeenCalled();
@@ -178,7 +204,12 @@ describe("RequestSpec.headers — per-request headers", () => {
     mockFetch.mockResolvedValue(new Response(JSON.stringify({}), { status: 200 }));
     const action = apiAction<string>({
       name: "per.req.post",
-      request: () => ({ method: "POST", path: "/x", body: { a: 1 }, headers: { "X-Request-Id": "abc" } }),
+      request: () => ({
+        method: "POST",
+        path: "/x",
+        body: { a: 1 },
+        headers: { "X-Request-Id": "abc" },
+      }),
     });
     await action.dispatch("x");
     const headers = mockFetch.mock.calls[0]![1].headers as Record<string, string>;

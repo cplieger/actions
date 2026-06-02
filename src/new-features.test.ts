@@ -1,12 +1,21 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi, beforeEach } from "vitest";
-vi.mock("./notifier.js", () => ({ configure: vi.fn(), notifySuccess: vi.fn(), notifyError: vi.fn(), _resetNotifierForTest: vi.fn() }));
+vi.mock("./notifier.js", () => ({
+  configure: vi.fn(),
+  notifySuccess: vi.fn(),
+  notifyError: vi.fn(),
+  _resetNotifierForTest: vi.fn(),
+}));
 import { defineAction, _resetForTest as resetDefine } from "./define.js";
 import { _resetForTest as resetRegistry, subscribeByName, getActionLog } from "./registry.js";
 import { _resetForTest as resetCleanup } from "./cleanup.js";
 import { ActionError } from "./error.js";
 
-beforeEach(() => { resetDefine(); resetRegistry(); resetCleanup(); });
+beforeEach(() => {
+  resetDefine();
+  resetRegistry();
+  resetCleanup();
+});
 
 // ---------------------------------------------------------------------------
 // 1. Definition-level onSuccess / onError / onSettled (TanStack pattern)
@@ -14,7 +23,11 @@ beforeEach(() => { resetDefine(); resetRegistry(); resetCleanup(); });
 describe("definition-level callbacks (TanStack pattern)", () => {
   it("onSuccess fires on every successful dispatch", async () => {
     const defOnSuccess = vi.fn();
-    const action = defineAction({ name: "def.ok", run: async (n: number) => n * 3, onSuccess: defOnSuccess });
+    const action = defineAction({
+      name: "def.ok",
+      run: async (n: number) => n * 3,
+      onSuccess: defOnSuccess,
+    });
     await action.dispatch(2);
     await action.dispatch(4);
     expect(defOnSuccess).toHaveBeenCalledTimes(2);
@@ -24,7 +37,13 @@ describe("definition-level callbacks (TanStack pattern)", () => {
 
   it("onError fires on every failed dispatch", async () => {
     const defOnError = vi.fn();
-    const action = defineAction({ name: "def.err", run: async () => { throw new ActionError("boom"); }, onError: defOnError });
+    const action = defineAction({
+      name: "def.err",
+      run: async () => {
+        throw new ActionError("boom");
+      },
+      onError: defOnError,
+    });
     await action.dispatch("x");
     expect(defOnError).toHaveBeenCalledWith(expect.objectContaining({ message: "boom" }), "x");
   });
@@ -33,7 +52,10 @@ describe("definition-level callbacks (TanStack pattern)", () => {
     const defOnError = vi.fn();
     const action = defineAction({
       name: "def.cancel-no-err",
-      run: (_a, signal) => new Promise<void>((_, rej) => { signal.addEventListener("abort", () => rej(new Error("aborted"))); }),
+      run: (_a, signal) =>
+        new Promise<void>((_, rej) => {
+          signal.addEventListener("abort", () => rej(new Error("aborted")));
+        }),
       onError: defOnError,
     });
     const p = action.dispatch("a");
@@ -44,19 +66,32 @@ describe("definition-level callbacks (TanStack pattern)", () => {
 
   it("onSettled fires on success, error, and cancellation", async () => {
     const defOnSettled = vi.fn();
-    const okAction = defineAction({ name: "def.settled.ok", run: async () => "r", onSettled: defOnSettled });
+    const okAction = defineAction({
+      name: "def.settled.ok",
+      run: async () => "r",
+      onSettled: defOnSettled,
+    });
     await okAction.dispatch("s");
     expect(defOnSettled).toHaveBeenCalledWith("s");
 
     defOnSettled.mockClear();
-    const errAction = defineAction({ name: "def.settled.err", run: async () => { throw new ActionError("e"); }, onSettled: defOnSettled });
+    const errAction = defineAction({
+      name: "def.settled.err",
+      run: async () => {
+        throw new ActionError("e");
+      },
+      onSettled: defOnSettled,
+    });
     await errAction.dispatch("e");
     expect(defOnSettled).toHaveBeenCalledWith("e");
 
     defOnSettled.mockClear();
     const cancelAction = defineAction({
       name: "def.settled.cancel",
-      run: (_a, signal) => new Promise<void>((_, rej) => { signal.addEventListener("abort", () => rej(new Error("aborted"))); }),
+      run: (_a, signal) =>
+        new Promise<void>((_, rej) => {
+          signal.addEventListener("abort", () => rej(new Error("aborted")));
+        }),
       onSettled: defOnSettled,
     });
     const p = cancelAction.dispatch("c");
@@ -70,9 +105,15 @@ describe("definition-level callbacks (TanStack pattern)", () => {
     const action = defineAction({
       name: "def.order",
       run: async () => "ok",
-      onSuccess: () => { order.push("def"); },
+      onSuccess: () => {
+        order.push("def");
+      },
     });
-    await action.dispatch("a", { onSuccess: () => { order.push("dispatch"); } });
+    await action.dispatch("a", {
+      onSuccess: () => {
+        order.push("dispatch");
+      },
+    });
     expect(order).toEqual(["def", "dispatch"]);
   });
 
@@ -81,7 +122,9 @@ describe("definition-level callbacks (TanStack pattern)", () => {
     const action = defineAction({
       name: "def.throw",
       run: async () => "ok",
-      onSuccess: () => { throw new Error("def boom"); },
+      onSuccess: () => {
+        throw new Error("def boom");
+      },
     });
     const result = await action.dispatch("a");
     expect(result).toBe("ok");
@@ -105,10 +148,11 @@ describe("per-dispatch abort handle (RTK pattern)", () => {
     const resolvers: ((v: string) => void)[] = [];
     const action = defineAction({
       name: "handle.specific",
-      run: (_args, signal) => new Promise<string>((resolve, reject) => {
-        resolvers.push(resolve);
-        signal.addEventListener("abort", () => reject(new Error("aborted")));
-      }),
+      run: (_args, signal) =>
+        new Promise<string>((resolve, reject) => {
+          resolvers.push(resolve);
+          signal.addEventListener("abort", () => reject(new Error("aborted")));
+        }),
     });
     const h1 = action.dispatch("a");
     const h2 = action.dispatch("b");
@@ -138,10 +182,14 @@ describe("timeout option on ActionDefinition", () => {
     const action = defineAction({
       name: "timeout.expire",
       timeout: 50,
-      run: (_args, signal) => new Promise<string>((resolve, reject) => {
-        const t = setTimeout(() => resolve("late"), 200);
-        signal.addEventListener("abort", () => { clearTimeout(t); reject(signal.reason); });
-      }),
+      run: (_args, signal) =>
+        new Promise<string>((resolve, reject) => {
+          const t = setTimeout(() => resolve("late"), 200);
+          signal.addEventListener("abort", () => {
+            clearTimeout(t);
+            reject(signal.reason);
+          });
+        }),
     });
     const result = await action.dispatch("x");
     expect(result).toBeNull(); // timed out
@@ -164,7 +212,9 @@ describe("timeout option on ActionDefinition", () => {
 describe("subscribeByName (public API)", () => {
   it("receives events only for the named action", async () => {
     const events: string[] = [];
-    subscribeByName("sub.target", (inst) => { events.push(inst.status); });
+    subscribeByName("sub.target", (inst) => {
+      events.push(inst.status);
+    });
     const target = defineAction({ name: "sub.target", run: async () => "ok" });
     const other = defineAction({ name: "sub.other", run: async () => "ok" });
     await target.dispatch("a");
@@ -174,7 +224,9 @@ describe("subscribeByName (public API)", () => {
 
   it("unsubscribe stops events", async () => {
     const events: string[] = [];
-    const unsub = subscribeByName("sub.unsub", (inst) => { events.push(inst.status); });
+    const unsub = subscribeByName("sub.unsub", (inst) => {
+      events.push(inst.status);
+    });
     const action = defineAction({ name: "sub.unsub", run: async () => "ok" });
     await action.dispatch("a");
     unsub();

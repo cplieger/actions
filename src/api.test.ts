@@ -1,16 +1,32 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { resetActionFramework } from "./__test-helpers__/action-test-setup.js";
-vi.mock("./notifier.js", () => ({ configure: vi.fn(), notifySuccess: vi.fn(), notifyError: vi.fn(), _resetNotifierForTest: vi.fn() }));
+vi.mock("./notifier.js", () => ({
+  configure: vi.fn(),
+  notifySuccess: vi.fn(),
+  notifyError: vi.fn(),
+  _resetNotifierForTest: vi.fn(),
+}));
 import { apiAction } from "./api.js";
 import { recentLog } from "./registry.js";
 
 const mockFetch = vi.fn();
 
-beforeEach(() => { resetActionFramework(); mockFetch.mockReset(); vi.stubGlobal("fetch", mockFetch); });
-afterEach(() => { vi.restoreAllMocks(); });
+beforeEach(() => {
+  resetActionFramework();
+  mockFetch.mockReset();
+  vi.stubGlobal("fetch", mockFetch);
+});
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
-const testAction = () => apiAction<{ id: string }, { name: string }>({ name: "test.api", request: ({ id }) => ({ method: "GET", path: `/api/items/${id}` }), error: "Test failed" });
+const testAction = () =>
+  apiAction<{ id: string }, { name: string }>({
+    name: "test.api",
+    request: ({ id }) => ({ method: "GET", path: `/api/items/${id}` }),
+    error: "Test failed",
+  });
 
 describe("apiAction", () => {
   it("returns parsed JSON on 200", async () => {
@@ -53,7 +69,9 @@ describe("apiAction", () => {
   });
 
   it("throws ActionError with status + body.error message on non-OK response", async () => {
-    mockFetch.mockResolvedValue(new Response(JSON.stringify({ error: "Not found" }), { status: 404 }));
+    mockFetch.mockResolvedValue(
+      new Response(JSON.stringify({ error: "Not found" }), { status: 404 }),
+    );
     const action = testAction();
     await action.dispatch({ id: "1" });
     const log = recentLog()[0];
@@ -63,7 +81,11 @@ describe("apiAction", () => {
 
   it("POST sends JSON body with Content-Type header", async () => {
     mockFetch.mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }));
-    const action = apiAction<{ name: string }>({ name: "test.post", request: ({ name }) => ({ method: "POST", path: "/api/items", body: { name } }), error: "Failed" });
+    const action = apiAction<{ name: string }>({
+      name: "test.post",
+      request: ({ name }) => ({ method: "POST", path: "/api/items", body: { name } }),
+      error: "Failed",
+    });
     await action.dispatch({ name: "foo" });
     const [url, opts] = mockFetch.mock.calls[0]!;
     expect(url).toBe("/api/items");

@@ -18,18 +18,25 @@ beforeEach(() => {
   resetActionFramework();
   vi.clearAllMocks();
 });
-afterEach(() => { vi.clearAllMocks(); });
+afterEach(() => {
+  vi.clearAllMocks();
+});
 
 describe("defineAction — happy path", () => {
   it("dispatch resolves with the run() result", async () => {
-    const action = defineAction({ name: "test.echo", run: async (args: { msg: string }) => args.msg });
+    const action = defineAction({
+      name: "test.echo",
+      run: async (args: { msg: string }) => args.msg,
+    });
     expect(await action.dispatch({ msg: "hello" })).toBe("hello");
   });
 
   it("records pending then success in the registry", async () => {
     const action = defineAction({ name: "test.ok", run: async () => "done" });
     const events: string[] = [];
-    const unsub = subscribe((i) => { events.push(i.status); });
+    const unsub = subscribe((i) => {
+      events.push(i.status);
+    });
     await action.dispatch({});
     unsub();
     expect(events).toEqual(["pending", "success"]);
@@ -45,13 +52,21 @@ describe("defineAction — happy path", () => {
   });
 
   it("notifies on success when `success` is a string", async () => {
-    const action = defineAction({ name: "test.success_string", run: async () => "x", success: "Saved" });
+    const action = defineAction({
+      name: "test.success_string",
+      run: async () => "x",
+      success: "Saved",
+    });
     await action.dispatch({});
     expect(notifier.notifySuccess).toHaveBeenCalledWith("Saved");
   });
 
   it("notifies on success when `success` is a function", async () => {
-    const action = defineAction({ name: "test.success_fn", run: async (args: string) => `${args}!`, success: (args, result) => `Got ${result} for ${args}` });
+    const action = defineAction({
+      name: "test.success_fn",
+      run: async (args: string) => `${args}!`,
+      success: (args, result) => `Got ${result} for ${args}`,
+    });
     await action.dispatch("hi");
     expect(notifier.notifySuccess).toHaveBeenCalledWith("Got hi! for hi");
   });
@@ -65,12 +80,22 @@ describe("defineAction — happy path", () => {
 
 describe("defineAction — error path", () => {
   it("dispatch resolves to null on run() throw", async () => {
-    const action = defineAction({ name: "test.fail", run: async () => { throw new ActionError("boom"); } });
+    const action = defineAction({
+      name: "test.fail",
+      run: async () => {
+        throw new ActionError("boom");
+      },
+    });
     expect(await action.dispatch({})).toBeNull();
   });
 
   it("records error status with the error message", async () => {
-    const action = defineAction({ name: "test.error", run: async () => { throw new ActionError("bad", { status: 500 }); } });
+    const action = defineAction({
+      name: "test.error",
+      run: async () => {
+        throw new ActionError("bad", { status: 500 });
+      },
+    });
     await action.dispatch({});
     const log = recentLog();
     expect(log[0]?.status).toBe("error");
@@ -79,25 +104,47 @@ describe("defineAction — error path", () => {
   });
 
   it("notifies on error by default with the action-name prefix", async () => {
-    const action = defineAction({ name: "chat.delete", run: async () => { throw new ActionError("not found"); } });
+    const action = defineAction({
+      name: "chat.delete",
+      run: async () => {
+        throw new ActionError("not found");
+      },
+    });
     await action.dispatch({});
     expect(notifier.notifyError).toHaveBeenCalledWith("Delete failed: not found", undefined);
   });
 
   it("`error: 'Custom prefix'` becomes the notification prefix", async () => {
-    const action = defineAction({ name: "test.fail", run: async () => { throw new ActionError("nope"); }, error: "Couldn't do the thing" });
+    const action = defineAction({
+      name: "test.fail",
+      run: async () => {
+        throw new ActionError("nope");
+      },
+      error: "Couldn't do the thing",
+    });
     await action.dispatch({});
     expect(notifier.notifyError).toHaveBeenCalledWith("Couldn't do the thing: nope", undefined);
   });
 
   it("`error: false` suppresses the error notification", async () => {
-    const action = defineAction({ name: "test.no_toast", run: async () => { throw new ActionError("silent"); }, error: false });
+    const action = defineAction({
+      name: "test.no_toast",
+      run: async () => {
+        throw new ActionError("silent");
+      },
+      error: false,
+    });
     await action.dispatch({});
     expect(notifier.notifyError).not.toHaveBeenCalled();
   });
 
   it("normalises non-ActionError throws", async () => {
-    const action = defineAction({ name: "test.weird", run: async () => { throw "string"; } });
+    const action = defineAction({
+      name: "test.weird",
+      run: async () => {
+        throw "string";
+      },
+    });
     await action.dispatch({});
     expect(recentLog()[0]?.error?.message).toBe("string");
   });
@@ -106,28 +153,63 @@ describe("defineAction — error path", () => {
 describe("defineAction — optimistic + rollback", () => {
   it("calls optimistic before run() with args", async () => {
     const order: string[] = [];
-    const action = defineAction({ name: "test.opt", optimistic: () => { order.push("opt"); return undefined; }, run: async () => { order.push("run"); return undefined; } });
+    const action = defineAction({
+      name: "test.opt",
+      optimistic: () => {
+        order.push("opt");
+        return undefined;
+      },
+      run: async () => {
+        order.push("run");
+        return undefined;
+      },
+    });
     await action.dispatch({});
     expect(order).toEqual(["opt", "run"]);
   });
 
   it("rollback receives the TOp on error", async () => {
     const rollback = vi.fn();
-    const action = defineAction({ name: "test.rollback", optimistic: () => ({ undoToken: 42 }), rollback, run: async () => { throw new ActionError("fail"); } });
+    const action = defineAction({
+      name: "test.rollback",
+      optimistic: () => ({ undoToken: 42 }),
+      rollback,
+      run: async () => {
+        throw new ActionError("fail");
+      },
+    });
     await action.dispatch({ id: "x" });
-    expect(rollback).toHaveBeenCalledWith({ id: "x" }, { undoToken: 42 }, expect.objectContaining({ message: "fail" }));
+    expect(rollback).toHaveBeenCalledWith(
+      { id: "x" },
+      { undoToken: 42 },
+      expect.objectContaining({ message: "fail" }),
+    );
   });
 
   it("rollback NOT called on success", async () => {
     const rollback = vi.fn();
-    const action = defineAction({ name: "test.no_rollback", optimistic: () => ({ x: 1 }), rollback, run: async () => "ok" });
+    const action = defineAction({
+      name: "test.no_rollback",
+      optimistic: () => ({ x: 1 }),
+      rollback,
+      run: async () => "ok",
+    });
     await action.dispatch({});
     expect(rollback).not.toHaveBeenCalled();
   });
 
   it("optimistic throwing skips run() and notifies the error", async () => {
     const run = vi.fn();
-    const action = defineAction({ name: "test.opt_throw", optimistic: () => { throw new Error("optimistic broke"); }, run: async () => { run(); return "x"; } });
+    const action = defineAction({
+      name: "test.opt_throw",
+      optimistic: () => {
+        throw new Error("optimistic broke");
+      },
+      run: async () => {
+        run();
+        return "x";
+      },
+    });
     await action.dispatch({});
     expect(run).not.toHaveBeenCalled();
     expect(notifier.notifyError).toHaveBeenCalled();
@@ -135,7 +217,16 @@ describe("defineAction — optimistic + rollback", () => {
 
   it("rollback exception is logged but doesn't crash", async () => {
     const consoleErr = vi.spyOn(console, "error").mockImplementation(() => undefined);
-    const action = defineAction({ name: "test.rollback_throw", optimistic: () => ({}), rollback: () => { throw new Error("rollback broke"); }, run: async () => { throw new ActionError("run failed"); } });
+    const action = defineAction({
+      name: "test.rollback_throw",
+      optimistic: () => ({}),
+      rollback: () => {
+        throw new Error("rollback broke");
+      },
+      run: async () => {
+        throw new ActionError("run failed");
+      },
+    });
     await action.dispatch({});
     expect(consoleErr).toHaveBeenCalled();
     expect(notifier.notifyError).toHaveBeenCalled();
@@ -146,7 +237,16 @@ describe("defineAction — optimistic + rollback", () => {
 describe("defineAction — cancellation", () => {
   it("action.cancel() aborts the run()'s signal", async () => {
     let aborted = false;
-    const action = defineAction({ name: "test.cancel", run: async (_args, signal) => new Promise<string>((_resolve, reject) => { signal.addEventListener("abort", () => { aborted = true; reject(new DOMException("aborted", "AbortError")); }); }) });
+    const action = defineAction({
+      name: "test.cancel",
+      run: async (_args, signal) =>
+        new Promise<string>((_resolve, reject) => {
+          signal.addEventListener("abort", () => {
+            aborted = true;
+            reject(new DOMException("aborted", "AbortError"));
+          });
+        }),
+    });
     const p = action.dispatch({});
     action.cancel();
     expect(await p).toBeNull();
@@ -154,7 +254,15 @@ describe("defineAction — cancellation", () => {
   });
 
   it("cancel records 'cancelled' status, not 'error'", async () => {
-    const action = defineAction({ name: "test.cancel_status", run: (_args, signal) => new Promise<string>((_, reject) => { signal.addEventListener("abort", () => { reject(new Error("aborted")); }); }) });
+    const action = defineAction({
+      name: "test.cancel_status",
+      run: (_args, signal) =>
+        new Promise<string>((_, reject) => {
+          signal.addEventListener("abort", () => {
+            reject(new Error("aborted"));
+          });
+        }),
+    });
     const p = action.dispatch({});
     action.cancel();
     await p;
@@ -164,7 +272,17 @@ describe("defineAction — cancellation", () => {
 
   it("cancel still calls rollback to undo optimistic", async () => {
     const rollback = vi.fn();
-    const action = defineAction({ name: "test.cancel_rollback", optimistic: () => ({ token: "abc" }), rollback, run: (_args, signal) => new Promise<string>((_, reject) => { signal.addEventListener("abort", () => { reject(new Error("aborted")); }); }) });
+    const action = defineAction({
+      name: "test.cancel_rollback",
+      optimistic: () => ({ token: "abc" }),
+      rollback,
+      run: (_args, signal) =>
+        new Promise<string>((_, reject) => {
+          signal.addEventListener("abort", () => {
+            reject(new Error("aborted"));
+          });
+        }),
+    });
     const p = action.dispatch({});
     action.cancel();
     await p;
@@ -172,7 +290,16 @@ describe("defineAction — cancellation", () => {
   });
 
   it("cancel does NOT notify (cancellation is user-initiated)", async () => {
-    const action = defineAction({ name: "test.cancel_no_toast", run: (_args, signal) => new Promise<string>((_, reject) => { signal.addEventListener("abort", () => { reject(new Error("aborted")); }); }), error: "Should not appear" });
+    const action = defineAction({
+      name: "test.cancel_no_toast",
+      run: (_args, signal) =>
+        new Promise<string>((_, reject) => {
+          signal.addEventListener("abort", () => {
+            reject(new Error("aborted"));
+          });
+        }),
+      error: "Should not appear",
+    });
     const p = action.dispatch({});
     action.cancel();
     await p;
@@ -191,7 +318,18 @@ describe("defineAction — concurrent instances", () => {
   it("cancel() aborts all in-flight instances", async () => {
     const aborts: number[] = [];
     let i = 0;
-    const action = defineAction({ name: "test.multi_cancel", run: (_args, signal) => { const me = ++i; return new Promise<string>((_, reject) => { signal.addEventListener("abort", () => { aborts.push(me); reject(new Error("aborted")); }); }); } });
+    const action = defineAction({
+      name: "test.multi_cancel",
+      run: (_args, signal) => {
+        const me = ++i;
+        return new Promise<string>((_, reject) => {
+          signal.addEventListener("abort", () => {
+            aborts.push(me);
+            reject(new Error("aborted"));
+          });
+        });
+      },
+    });
     const ps = [action.dispatch({}), action.dispatch({}), action.dispatch({})];
     action.cancel();
     await Promise.all(ps);
@@ -202,14 +340,18 @@ describe("defineAction — concurrent instances", () => {
 describe("registry", () => {
   it("recentLog is bounded", async () => {
     const action = defineAction({ name: "test.bounded", run: async () => "x" });
-    for (let i = 0; i < 250; i++) { await action.dispatch({}); }
+    for (let i = 0; i < 250; i++) {
+      await action.dispatch({});
+    }
     expect(recentLog().length).toBe(200);
   });
 
   it("subscriber unsubscribes cleanly", async () => {
     const action = defineAction({ name: "test.unsub", run: async () => "x" });
     let calls = 0;
-    const unsub = subscribe(() => { calls += 1; });
+    const unsub = subscribe(() => {
+      calls += 1;
+    });
     await action.dispatch({});
     const after1 = calls;
     unsub();
@@ -221,7 +363,13 @@ describe("registry", () => {
 describe("pendingCount — public API", () => {
   it("reports 1 for the named action mid-flight, 0 after completion", async () => {
     let resolve!: () => void;
-    const action = defineAction({ name: "test.slow", run: () => new Promise<void>((r) => { resolve = r; }) });
+    const action = defineAction({
+      name: "test.slow",
+      run: () =>
+        new Promise<void>((r) => {
+          resolve = r;
+        }),
+    });
     const p = action.dispatch({});
     expect(pendingCount(["test.slow"])).toBe(1);
     resolve();
@@ -232,7 +380,13 @@ describe("pendingCount — public API", () => {
 
 describe("defineAction — retryable error notification", () => {
   it("retryable passes a retry handler to error notification", async () => {
-    const action = defineAction({ name: "test.retry_always", run: async () => { throw new ActionError("network glitch"); }, retryable: (err) => err.code !== "cancelled" });
+    const action = defineAction({
+      name: "test.retry_always",
+      run: async () => {
+        throw new ActionError("network glitch");
+      },
+      retryable: (err) => err.code !== "cancelled",
+    });
     await action.dispatch({ id: 1 });
     expect(notifier.notifyError).toHaveBeenCalledTimes(1);
     const args = vi.mocked(notifier.notifyError).mock.calls[0]!;
@@ -241,39 +395,81 @@ describe("defineAction — retryable error notification", () => {
   });
 
   it("retryable: 'network' includes retry for status 0 / timeout", async () => {
-    const a1 = defineAction({ name: "test.retry_net_status0", run: async () => { throw new ActionError("fetch failed", { status: 0 }); }, retryable: retryNetwork });
+    const a1 = defineAction({
+      name: "test.retry_net_status0",
+      run: async () => {
+        throw new ActionError("fetch failed", { status: 0 });
+      },
+      retryable: retryNetwork,
+    });
     await a1.dispatch({});
     expect(vi.mocked(notifier.notifyError).mock.calls[0]?.[1]).toBeDefined();
     vi.clearAllMocks();
-    const a2 = defineAction({ name: "test.retry_net_timeout", run: async () => { throw new ActionError("Request timed out", { code: "timeout" }); }, retryable: retryNetwork });
+    const a2 = defineAction({
+      name: "test.retry_net_timeout",
+      run: async () => {
+        throw new ActionError("Request timed out", { code: "timeout" });
+      },
+      retryable: retryNetwork,
+    });
     await a2.dispatch({});
     expect(vi.mocked(notifier.notifyError).mock.calls[0]?.[1]).toBeDefined();
   });
 
   it("retryable: 'network' suppresses retry for HTTP 4xx/5xx", async () => {
-    const action = defineAction({ name: "test.retry_net_4xx", run: async () => { throw new ActionError("not found", { status: 404 }); }, retryable: retryNetwork });
+    const action = defineAction({
+      name: "test.retry_net_4xx",
+      run: async () => {
+        throw new ActionError("not found", { status: 404 });
+      },
+      retryable: retryNetwork,
+    });
     await action.dispatch({});
     expect(vi.mocked(notifier.notifyError).mock.calls[0]?.[1]).toBeUndefined();
   });
 
   it("retryable: false (default) never includes retry", async () => {
-    const action = defineAction({ name: "test.retry_default", run: async () => { throw new ActionError("oops"); } });
+    const action = defineAction({
+      name: "test.retry_default",
+      run: async () => {
+        throw new ActionError("oops");
+      },
+    });
     await action.dispatch({});
     expect(vi.mocked(notifier.notifyError).mock.calls[0]?.[1]).toBeUndefined();
   });
 
   it("retry handler re-dispatches the same action with the same args", async () => {
     let attempts = 0;
-    const action = defineAction({ name: "test.retry_redispatch", run: async () => { attempts += 1; if (attempts === 1) { throw new ActionError("first", { status: 0 }); } return "ok"; }, retryable: retryNetwork });
+    const action = defineAction({
+      name: "test.retry_redispatch",
+      run: async () => {
+        attempts += 1;
+        if (attempts === 1) {
+          throw new ActionError("first", { status: 0 });
+        }
+        return "ok";
+      },
+      retryable: retryNetwork,
+    });
     await action.dispatch({ msg: "hello" });
     const retryFn = vi.mocked(notifier.notifyError).mock.calls[0]?.[1]?.onClick as () => void;
     expect(retryFn).toBeDefined();
     retryFn();
-    await vi.waitFor(() => { expect(attempts).toBe(2); });
+    await vi.waitFor(() => {
+      expect(attempts).toBe(2);
+    });
   });
 
   it("retry suppressed when error: false (no notification at all)", async () => {
-    const action = defineAction({ name: "test.retry_no_toast", run: async () => { throw new ActionError("silent"); }, error: false, retryable: (err) => err.code !== "cancelled" });
+    const action = defineAction({
+      name: "test.retry_no_toast",
+      run: async () => {
+        throw new ActionError("silent");
+      },
+      error: false,
+      retryable: (err) => err.code !== "cancelled",
+    });
     await action.dispatch({});
     expect(notifier.notifyError).not.toHaveBeenCalled();
   });

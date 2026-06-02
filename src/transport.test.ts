@@ -30,7 +30,12 @@ const testAction = () =>
 
 describe("transportAction error classification", () => {
   it("classifies timeout via r.code", async () => {
-    mockSend.mockResolvedValue({ ok: false, status: 0, error: "Request timed out", code: "timeout" });
+    mockSend.mockResolvedValue({
+      ok: false,
+      status: 0,
+      error: "Request timed out",
+      code: "timeout",
+    });
     const action = testAction();
     await action.dispatch({ chatID: "c1" });
     const log = recentLog();
@@ -39,7 +44,12 @@ describe("transportAction error classification", () => {
   });
 
   it("classifies cancelled via r.code", async () => {
-    mockSend.mockResolvedValue({ ok: false, status: 0, error: "Request cancelled", code: "cancelled" });
+    mockSend.mockResolvedValue({
+      ok: false,
+      status: 0,
+      error: "Request cancelled",
+      code: "cancelled",
+    });
     const action = testAction();
     await action.dispatch({ chatID: "c1" });
     const log = recentLog();

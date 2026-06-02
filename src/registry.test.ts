@@ -116,7 +116,7 @@ describe("listener iteration", () => {
 
   it("throwing listener does not prevent other listeners from firing", () => {
     const calls: string[] = [];
-     
+
     const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     subscribe(() => {
       throw new Error("boom");
@@ -223,14 +223,18 @@ describe("pendingByName index", () => {
     record(makeInstance({ id: "a1", name: "file.upload", status: "success" }));
     expect(isPending("file.upload")).toBe(true);
     expect(pendingCount(["file.upload"])).toBe(1);
-    record(makeInstance({ id: "a2", name: "file.upload", status: "error", error: { message: "fail" } }));
+    record(
+      makeInstance({ id: "a2", name: "file.upload", status: "error", error: { message: "fail" } }),
+    );
     expect(isPending("file.upload")).toBe(false);
     expect(pendingCount(["file.upload"])).toBe(0);
   });
 
   it("retry (terminal→pending) re-adds to pendingByName", () => {
     record(makeInstance({ id: "r1", name: "git.push", status: "pending" }));
-    record(makeInstance({ id: "r1", name: "git.push", status: "error", error: { message: "timeout" } }));
+    record(
+      makeInstance({ id: "r1", name: "git.push", status: "error", error: { message: "timeout" } }),
+    );
     expect(isPending("git.push")).toBe(false);
     record(makeInstance({ id: "r1", name: "git.push", status: "pending" }));
     expect(isPending("git.push")).toBe(true);
