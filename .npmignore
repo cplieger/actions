@@ -7,3 +7,4 @@ vitest.config.ts
 renovate.json
 .prettierrc.json
 .github/
+dist/
