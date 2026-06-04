@@ -4,14 +4,9 @@
   "type": "module",
   "sideEffects": false,
   "exports": {
-    ".": {
-      "types": "./dist/src/index.d.ts",
-      "import": "./dist/src/index.js"
-    }
+    ".": "./src/index.ts"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "prepublishOnly": "npm run build",
     "typecheck": "tsgo -project tsconfig.json",
     "typecheck:tests": "tsgo -project tsconfig.test.json",
     "test": "vitest --run"
@@ -24,7 +19,6 @@
     "fast-check": "4.8.0",
     "happy-dom": "20.9.0",
     "prettier": "3.8.3",
-    "typescript": "6.0.3",
     "typescript-eslint": "8.60.0",
     "vitest": "4.1.7"
   },
@@ -37,5 +31,9 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/cplieger/actions.git"
-  }
+  },
+  "files": [
+    "src/",
+    "jsr.json"
+  ]
 }
