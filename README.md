@@ -7,7 +7,7 @@
 
 > Declarative UI-actions framework with lifecycle management, retry, debounce, and polling.
 
-A standalone TypeScript library for defining and dispatching UI actions with full lifecycle support: optimistic updates, automatic retry with backoff, scope serialization, dedupe collapsing, notification wiring, and a registry for observability. Zero runtime dependencies — notification display and streaming transport are injected by the consumer via small interfaces.
+A standalone TypeScript library for defining and dispatching UI actions with full lifecycle support: optimistic updates, automatic retry with backoff, scope serialization, dedupe collapsing, notification wiring, and a registry for observability. Built on [`@cplieger/reactive`](https://github.com/cplieger/reactive) — action pending-state is signal-backed, so `isPending`/`pendingCount` are reactive and `bindLoadingState` is a plain effect over them. Notification display and streaming transport are injected by the consumer via small interfaces.
 
 ## Install
 
@@ -99,12 +99,12 @@ const action = apiAction({
 - `transportAction(def)` — create a transport/SSE-backed action
 - `debouncedDispatch(action, opts)` — debounce wrapper
 - `pollAction(action, args, opts)` — interval polling with pause/backoff
-- `bindLoadingState(name, el, opts?)` — bind element disabled state to action pending
-- `subscribeToActions(fn)` — subscribe to all lifecycle events
-- `subscribeByName(name, fn)` — subscribe to lifecycle events for a single action name
+- `bindLoadingState(name, el, opts?)` — bind an element's disabled/aria-busy state to action pending; a reactive effect over the pending signals
+- `subscribeToActions(fn)` — subscribe to all lifecycle events (discrete event stream)
+- `subscribeByName(name, fn)` — subscribe to lifecycle events for a single action name (discrete event stream)
 - `getActionLog()` — read the recent action log (for devtools/debugging)
-- `pendingCount(names?)` — query pending action count
-- `isPending(name)` — O(1) check if a named action is in-flight
+- `pendingCount(names?)` — pending action count; reactive (tracks inside an effect)
+- `isPending(name)` — check if a named action is in-flight; reactive (tracks inside an effect)
 - `registerCleanup(fn)` — register teardown hooks for page unload
 - `ActionError` — structured error class with status/code
 - `retryNetwork` — preset retry classifier for transient failures

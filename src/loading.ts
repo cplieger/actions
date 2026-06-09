@@ -1,16 +1,20 @@
 // bindLoadingState: bind a button or input element's disabled / aria-busy
-// state to one or more named actions' pending count.
+// state to one or more named actions' pending state.
 //
 // While ANY of the named actions is pending, the element gets:
 //   - disabled = true
 //   - aria-busy = "true"  (omit by passing { ariaBusy: false })
 //   - optionally an extra CSS class via { pendingClass: "btn-loading" }
 //
-// Returns an unsubscribe function. Call it from the view's teardown
-// hook to stop receiving updates and avoid leaking listeners.
+// Implemented as a reactive effect over the registry's pending signals: it
+// re-runs automatically whenever a bound action's pending state changes, so
+// there is no bespoke subscription here. Returns a dispose function — call it
+// from the view's teardown hook to stop updates and release the element.
 // ---------------------------------------------------------------------------
 
-import { subscribeByName, isPending, pendingCount } from "./registry.js";
+import { effect } from "@cplieger/reactive";
+
+import { isPending, pendingCount } from "./registry.js";
 
 /** Element types that have a `.disabled` writable boolean. */
 type DisableableElement =
@@ -56,6 +60,9 @@ export function bindLoadingState(
   let hadFocus = false;
   let disposed = false;
   let wasConnected = el.isConnected;
+  // Holder so run() can self-dispose the effect on detach without a
+  // forward-referenced `let` (assigned just below, after run() is defined).
+  const handle: { dispose?: () => void } = {};
 
   const resolveBase = (): boolean => {
     if (disabledFn !== undefined) {
@@ -89,21 +96,19 @@ export function bindLoadingState(
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion -- length checked above
     names.length === 1 ? isPending(names[0]!) : pendingCount(names) > 0;
 
-  // eslint-disable-next-line prefer-const -- assigned after apply() closure is defined
-  let _unsubs: (() => void)[] | undefined;
-
-  const apply = (): void => {
+  // Reactive effect: readPending() tracks the registry's pending signals, so
+  // this re-runs whenever a bound action's pending state changes.
+  const run = (): undefined => {
     if (disposed) {
-      return;
+      return undefined;
     }
     if (wasConnected && !el.isConnected) {
+      // Element left the DOM without an explicit unbind — auto-dispose so we
+      // don't keep it (and the effect) alive. Defer the dispose: `dispose` is
+      // still unset during the effect's own first synchronous run.
       disposed = true;
-      if (_unsubs) {
-        for (const u of _unsubs) {
-          u();
-        }
-      }
-      return;
+      queueMicrotask(() => handle.dispose?.());
+      return undefined;
     }
     if (el.isConnected) {
       wasConnected = true;
@@ -125,6 +130,7 @@ export function bindLoadingState(
       setIdle();
     }
     wasPending = pending;
+    return undefined;
   };
 
   const restore = (): void => {
@@ -134,16 +140,11 @@ export function bindLoadingState(
     }
   };
 
-  apply();
-
-  const unsubs = names.map((name) => subscribeByName(name, apply));
-  _unsubs = unsubs;
+  handle.dispose = effect(run);
 
   return () => {
     disposed = true;
     restore();
-    for (const u of unsubs) {
-      u();
-    }
+    handle.dispose?.();
   };
 }
