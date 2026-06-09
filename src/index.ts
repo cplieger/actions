@@ -29,6 +29,10 @@ export {
 // Loading-state helper
 export { bindLoadingState } from "./loading.js";
 
+// Async button-feedback helper
+export { withAsyncFeedback } from "./async-feedback.js";
+export type { AsyncFeedbackOptions } from "./async-feedback.js";
+
 // Cleanup hooks
 export { registerCleanup } from "./cleanup.js";
 
@@ -39,6 +43,10 @@ export type { DebouncedDispatch } from "./debounce.js";
 // Polling helper
 export { pollAction } from "./poll.js";
 export type { PollOptions } from "./poll.js";
+
+// Poll-until-terminal helper
+export { pollUntil } from "./poll-until.js";
+export type { PollUntilOptions, PollUntilOutcome } from "./poll-until.js";
 
 // Types
 export type {
