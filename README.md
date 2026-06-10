@@ -7,7 +7,7 @@
 
 > Declarative UI-actions framework with lifecycle management, retry, debounce, and polling.
 
-A standalone TypeScript library for defining and dispatching UI actions with full lifecycle support: optimistic updates, automatic retry with backoff, scope serialization, dedupe collapsing, notification wiring, and a registry for observability. Built on [`@cplieger/reactive`](https://github.com/cplieger/reactive) — action pending-state is signal-backed, so `isPending`/`pendingCount` are reactive and `bindLoadingState` is a plain effect over them. Notification display and streaming transport are injected by the consumer via small interfaces.
+A standalone TypeScript library for defining and dispatching UI actions with full lifecycle support: optimistic updates, automatic retry with backoff, scope serialization, dedupe collapsing, notification wiring, polling, button-feedback helpers, and a registry for observability. Built on [`@cplieger/reactive`](https://github.com/cplieger/reactive) — action pending-state is signal-backed, so `isPending`/`pendingCount` are reactive and `bindLoadingState` is a plain effect over them. Notification display and streaming transport are injected by the consumer via small interfaces.
 
 ## Install
 
@@ -100,6 +100,8 @@ const action = apiAction({
 - `debouncedDispatch(action, opts)` — debounce wrapper
 - `pollAction(action, args, opts)` — interval polling with pause/backoff
 - `bindLoadingState(name, el, opts?)` — bind an element's disabled/aria-busy state to action pending; a reactive effect over the pending signals
+- `pollUntil(step, opts)` — poll until a terminal condition (wait-then-poll, `until` predicate, `maxAttempts`/`timeoutMs` budgets, backoff-on-transient); returns `{status:'done'|'timeout'|'aborted'}`. A standalone sibling to `pollAction` for one-shot terminal-state waits.
+- `withAsyncFeedback(btn, fn, opts?)` — per-button async feedback (spinner → ✓/✗ → restore) with a re-entry guard + sr-only announce + injectable glyphs. `target?: HTMLElement` runs the cycle on a child slot via in-place element replacement (siblings/label untouched); `resetMs: 0` persists the outcome glyph (no auto-revert).
 - `subscribeToActions(fn)` — subscribe to all lifecycle events (discrete event stream)
 - `subscribeByName(name, fn)` — subscribe to lifecycle events for a single action name (discrete event stream)
 - `getActionLog()` — read the recent action log (for devtools/debugging)
