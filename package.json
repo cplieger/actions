@@ -1,16 +1,19 @@
 {
   "name": "@cplieger/actions",
-  "version": "0.1.0",
+  "version": "2.0.0",
   "type": "module",
   "sideEffects": false,
   "exports": {
     ".": "./src/index.ts",
-    "./src/*": "./src/*"
+    "./testing": "./src/testing.ts"
   },
   "scripts": {
     "typecheck": "tsgo -project tsconfig.json",
     "typecheck:tests": "tsgo -project tsconfig.test.json",
     "test": "vitest --run"
+  },
+  "dependencies": {
+    "@cplieger/reactive": "1.1.0"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

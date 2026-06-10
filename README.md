@@ -7,7 +7,7 @@
 
 > Declarative UI-actions framework with lifecycle management, retry, debounce, and polling.
 
-A standalone TypeScript library for defining and dispatching UI actions with full lifecycle support: optimistic updates, automatic retry with backoff, scope serialization, dedupe collapsing, notification wiring, and a registry for observability. Zero runtime dependencies — notification display and streaming transport are injected by the consumer via small interfaces.
+A standalone TypeScript library for defining and dispatching UI actions with full lifecycle support: optimistic updates, automatic retry with backoff, scope serialization, dedupe collapsing, notification wiring, polling, button-feedback helpers, and a registry for observability. Built on [`@cplieger/reactive`](https://github.com/cplieger/reactive) — action pending-state is signal-backed, so `isPending`/`pendingCount` are reactive and `bindLoadingState` is a plain effect over them. Notification display and streaming transport are injected by the consumer via small interfaces.
 
 ## Install
 
@@ -99,12 +99,14 @@ const action = apiAction({
 - `transportAction(def)` — create a transport/SSE-backed action
 - `debouncedDispatch(action, opts)` — debounce wrapper
 - `pollAction(action, args, opts)` — interval polling with pause/backoff
-- `bindLoadingState(name, el, opts?)` — bind element disabled state to action pending
-- `subscribeToActions(fn)` — subscribe to all lifecycle events
-- `subscribeByName(name, fn)` — subscribe to lifecycle events for a single action name
+- `bindLoadingState(name, el, opts?)` — bind an element's disabled/aria-busy state to action pending; a reactive effect over the pending signals
+- `pollUntil(step, opts)` — poll until a terminal condition (wait-then-poll, `until` predicate, `maxAttempts`/`timeoutMs` budgets, backoff-on-transient); returns `{status:'done'|'timeout'|'aborted'}`. A standalone sibling to `pollAction` for one-shot terminal-state waits.
+- `withAsyncFeedback(btn, fn, opts?)` — per-button async feedback (spinner → ✓/✗ → restore) with a re-entry guard + sr-only announce + injectable glyphs. `target?: HTMLElement` runs the cycle on a child slot via in-place element replacement (siblings/label untouched); `resetMs: 0` persists the outcome glyph (no auto-revert).
+- `subscribeToActions(fn)` — subscribe to all lifecycle events (discrete event stream)
+- `subscribeByName(name, fn)` — subscribe to lifecycle events for a single action name (discrete event stream)
 - `getActionLog()` — read the recent action log (for devtools/debugging)
-- `pendingCount(names?)` — query pending action count
-- `isPending(name)` — O(1) check if a named action is in-flight
+- `pendingCount(names?)` — pending action count; reactive (tracks inside an effect)
+- `isPending(name)` — check if a named action is in-flight; reactive (tracks inside an effect)
 - `registerCleanup(fn)` — register teardown hooks for page unload
 - `ActionError` — structured error class with status/code
 - `retryNetwork` — preset retry classifier for transient failures
@@ -113,6 +115,29 @@ const action = apiAction({
 - `withTimeout(signal, ms)` — compose an AbortSignal with a timeout
 - `API_TIMEOUT_MS` — default API request timeout (30 000 ms)
 - `RETRY_STANDARD` — standard retry config (2 retries, 300ms)
+
+### Test utilities (`@cplieger/actions/testing`)
+
+The `./testing` subpath exports test-only helpers. Import only from test code:
+
+```typescript
+import { resetActionFramework } from "@cplieger/actions/testing";
+
+beforeEach(() => {
+  resetActionFramework();
+});
+```
+
+- `resetActionFramework()` — clear every framework state slot (define, registry, cleanup, api, transport, notifier). Call from `beforeEach()` to isolate tests.
+
+> **Breaking change in v2.0:** the `./src/*` deep-import escape hatch was removed
+> from `package.json` exports. Consumers that previously reached into
+> `@cplieger/actions/src/define`, `…/src/registry`, `…/src/cleanup`,
+> `…/src/api`, `…/src/transport`, or `…/src/notifier` to call
+> `_resetForTest`/`_resetApiConfigForTest`/`_resetTransportForTest`/
+> `_resetNotifierForTest` must migrate to
+> `@cplieger/actions/testing` for `resetActionFramework()`, or to the
+> public surface for everything else.
 
 ### Definition-level callbacks (TanStack Query pattern)
 

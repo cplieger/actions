@@ -1,22 +1,14 @@
 /**
- * Shared action-test setup. Provides resetActionFramework() and mock factories.
+ * Internal test setup — re-exports `resetActionFramework` from the public
+ * `./testing` entrypoint so internal tests share the canonical implementation.
+ *
+ * Also provides canonical `vi.mock()` factories for the notifier and transport
+ * modules (used by tests that want to assert calls without exercising the
+ * real adapters).
  */
 import { vi } from "vitest";
 
-import { _resetForTest as resetDefine } from "../define.js";
-import { _resetForTest as resetRegistry } from "../registry.js";
-import { _resetForTest as resetCleanup } from "../cleanup.js";
-import { _resetNotifierForTest as resetNotifier } from "../notifier.js";
-import { _resetTransportForTest as resetTransport } from "../transport.js";
-
-/** Resets define, registry, cleanup, notifier, and transport modules. Call in beforeEach(). */
-export function resetActionFramework(): void {
-  resetDefine();
-  resetRegistry();
-  resetCleanup();
-  resetNotifier();
-  resetTransport();
-}
+export { resetActionFramework } from "../testing.js";
 
 /** Canonical notifier mock factory for vi.mock("../notifier.js", mockNotifier) */
 export const mockNotifier = () => ({
