@@ -71,7 +71,7 @@ declaration emit and is not published.
   `noUncheckedIndexedAccess`, `noPropertyAccessFromIndexSignature`,
   `noImplicitOverride`, and friends. Expect to handle `undefined` explicitly.
 - **Strict typed ESLint.** `eslint.config.mjs` runs the `strictTypeChecked`
-  + `stylisticTypeChecked` presets: no `any` (prefer `unknown`), inline
+  and `stylisticTypeChecked` presets: no `any` (prefer `unknown`), inline
   `import type`, `eqeqeq`, `curly`, `prefer-const`. Prefix deliberately
   unused names with `_`.
 - **Tests are colocated** as `src/**/*.test.ts` (the only pattern vitest
