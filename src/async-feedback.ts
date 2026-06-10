@@ -48,6 +48,11 @@ const defaultRenderError = (): Node => svgNode(X_HTML);
 /** WeakMap tracking the pending reset timer per button. */
 const resetTimers = new WeakMap<HTMLButtonElement, ReturnType<typeof setTimeout>>();
 
+/** Tracks buttons with an in-flight operation. The re-entry guard keys on
+ *  THIS (not `data-async-status`) so a persisted outcome glyph (resetMs<=0)
+ *  does not permanently block a subsequent dispatch. */
+const inFlight = new WeakSet<HTMLButtonElement>();
+
 /** Lazily-created live region for announcing async-button outcomes. */
 let liveRegion: HTMLElement | null = null;
 
@@ -71,12 +76,31 @@ function announce(message: string): void {
 /** Options for {@link withAsyncFeedback}. All fields are optional; the glyph
  *  renderers default to vibekit's inline SVGs. */
 export interface AsyncFeedbackOptions {
-  /** Post-completion glyph hold in ms. Default 1200. */
+  /** Post-completion glyph hold in ms before the content reverts. Default
+   *  1200. A value of `0` (or any value `<= 0`) means *persist*: the content
+   *  revert is never scheduled, so the success/error glyph stays in place
+   *  indefinitely (a later caller-driven re-render is expected to clear it).
+   *  Under persist the button is still re-enabled and `aria-busy` restored at
+   *  outcome time, but `data-async-status` keeps its terminal `success`/
+   *  `error` value (it is not cleared). Applies to both the whole-button and
+   *  `target` paths. */
   resetMs?: number;
   /** When true, prepend the spinner before the existing content (e.g.
    *  "⟳ Cloning…") instead of replacing the content with just the spinner.
-   *  Default false (icon-only replace). */
+   *  Default false (icon-only replace). Ignored when {@link target} is set. */
   keepLabel?: boolean;
+  /** Opt-in: drive a single child slot of the button instead of the button's
+   *  whole content. When provided, the spinner / outcome glyph / reset cycle
+   *  operates on `target` by REPLACING THE ELEMENT IN THE DOM
+   *  (`current.replaceWith(next)`), leaving every other child of `btn` (e.g. a
+   *  text label sibling) untouched. The original `target` node reference is
+   *  kept so a (non-persist) reset restores that exact node. `target` is
+   *  expected to be a descendant of `btn` (not hard-validated). The
+   *  button-level concerns are unchanged: `disabled` toggle, the
+   *  `data-async-status` re-entry guard, `aria-busy`, and the sr-only
+   *  announce all still apply to `btn`. `keepLabel` is irrelevant here and is
+   *  ignored. Default: whole-button (childNodes) mode. */
+  target?: HTMLElement;
   /** Pending-state node factory. Returns a fresh node per call. */
   renderPending?: () => Node;
   /** Success-glyph node factory. Returns a fresh node per call. */
@@ -95,10 +119,13 @@ export async function withAsyncFeedback(
   fn: () => Promise<unknown>,
   opts: AsyncFeedbackOptions = {},
 ): Promise<void> {
-  // Guard: reject re-entry while any status is active (pending/success/error).
-  if (btn.dataset["asyncStatus"] !== undefined) {
+  // Guard: reject re-entry only while an operation is in flight. (Keying on
+  // `data-async-status` would deadlock the persist path, whose terminal status
+  // is intentionally never cleared.)
+  if (inFlight.has(btn)) {
     return;
   }
+  inFlight.add(btn);
 
   // Cancel any pending reset timer from a prior cycle to avoid stale restores.
   const prevTimer = resetTimers.get(btn);
@@ -112,14 +139,44 @@ export async function withAsyncFeedback(
   const renderError = opts.renderError ?? defaultRenderError;
   const announceCfg = opts.announce ?? DEFAULT_ANNOUNCE;
 
-  const origNodes = [...btn.childNodes].map((n) => n.cloneNode(true));
+  // Target mode operates on a single child slot via element replacement and
+  // never snapshots/replaces the button's own childNodes. `originalTarget`
+  // keeps the exact node so a non-persist reset can restore it; `currentSlot`
+  // tracks whichever node currently occupies the slot.
+  const target = opts.target;
+  const useTarget = target !== undefined;
+  const originalTarget: ChildNode | null = useTarget ? target : null;
+  let currentSlot: ChildNode | null = useTarget ? target : null;
+
+  // Replace the live slot node with `next` and track it as the new slot.
+  // Render factories return a single node (Element/Text), both of which are
+  // ChildNode at runtime; the cast reflects that contract.
+  const swapSlot = (next: Node): void => {
+    if (currentSlot === null) {
+      return;
+    }
+    currentSlot.replaceWith(next);
+    currentSlot = next as ChildNode;
+  };
+
+  const origNodes = useTarget ? [] : [...btn.childNodes].map((n) => n.cloneNode(true));
   const origDisabled = btn.disabled;
   const origAriaBusy = btn.getAttribute("aria-busy");
+
+  const restoreAriaBusy = (): void => {
+    if (origAriaBusy === null) {
+      btn.removeAttribute("aria-busy");
+    } else {
+      btn.setAttribute("aria-busy", origAriaBusy);
+    }
+  };
 
   btn.dataset["asyncStatus"] = "pending";
   btn.disabled = true;
   btn.setAttribute("aria-busy", "true");
-  if (opts.keepLabel === true) {
+  if (useTarget) {
+    swapSlot(renderPending());
+  } else if (opts.keepLabel === true) {
     btn.prepend(renderPending(), document.createTextNode(" "));
   } else {
     btn.replaceChildren(renderPending());
@@ -136,33 +193,46 @@ export async function withAsyncFeedback(
   // (e.g. a re-rendered list). Skip the success/error visual in that case —
   // the new DOM already reflects the result.
   if (!btn.isConnected) {
-    if (origAriaBusy === null) {
-      btn.removeAttribute("aria-busy");
-    } else {
-      btn.setAttribute("aria-busy", origAriaBusy);
-    }
+    inFlight.delete(btn);
+    restoreAriaBusy();
     delete btn.dataset["asyncStatus"];
     return;
   }
 
   btn.dataset["asyncStatus"] = ok ? "success" : "error";
-  btn.replaceChildren(ok ? renderSuccess() : renderError());
-  if (origAriaBusy === null) {
-    btn.removeAttribute("aria-busy");
+  if (useTarget) {
+    swapSlot(ok ? renderSuccess() : renderError());
   } else {
-    btn.setAttribute("aria-busy", origAriaBusy);
+    btn.replaceChildren(ok ? renderSuccess() : renderError());
   }
+  restoreAriaBusy();
+  inFlight.delete(btn);
   if (announceCfg !== false) {
     announce(ok ? announceCfg.success : announceCfg.error);
   }
 
+  // `resetMs <= 0` => persist: skip the content-revert timer entirely. The
+  // glyph stays and `data-async-status` keeps its terminal value, but the
+  // button is re-enabled now (there is no reset callback to do it later).
   const reset = opts.resetMs ?? RESET_MS;
+  if (reset <= 0) {
+    btn.disabled = origDisabled;
+    return;
+  }
+
   const timerId = setTimeout(() => {
     resetTimers.delete(btn);
     if (!btn.isConnected) {
       return;
     }
-    btn.replaceChildren(...origNodes.map((n) => n.cloneNode(true)));
+    if (useTarget) {
+      if (currentSlot !== null && originalTarget !== null) {
+        currentSlot.replaceWith(originalTarget);
+        currentSlot = originalTarget;
+      }
+    } else {
+      btn.replaceChildren(...origNodes.map((n) => n.cloneNode(true)));
+    }
     btn.disabled = origDisabled;
     delete btn.dataset["asyncStatus"];
   }, reset);

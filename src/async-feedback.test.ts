@@ -223,3 +223,203 @@ describe("withAsyncFeedback — injectable glyphs", () => {
     vi.advanceTimersByTime(1200);
   });
 });
+
+describe("withAsyncFeedback — target slot + persist", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  function mk(cls: string): HTMLElement {
+    const s = document.createElement("span");
+    s.className = cls;
+    return s;
+  }
+
+  function makeIconButton(): {
+    btn: HTMLButtonElement;
+    icon: HTMLSpanElement;
+    label: HTMLSpanElement;
+  } {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    const icon = document.createElement("span");
+    icon.className = "icon";
+    const label = document.createElement("span");
+    label.textContent = " Label";
+    btn.append(icon, label);
+    document.body.replaceChildren(btn);
+    return { btn, icon, label };
+  }
+
+  // (a) target mode: only the slot animates; the label sibling is untouched;
+  // the ORIGINAL slot node (same reference) is restored on default reset.
+  it("replaces only the target slot, preserves the label, restores the original slot on reset", async () => {
+    const { btn, icon, label } = makeIconButton();
+    let resolveFn: (() => void) | undefined;
+    const work = new Promise<void>((res) => {
+      resolveFn = res;
+    });
+    const promise = withAsyncFeedback(btn, () => work, {
+      target: icon,
+      renderPending: () => mk("pending-slot"),
+      renderSuccess: () => mk("success-slot"),
+    });
+
+    // Pending: the icon slot is swapped out for the pending node; label intact.
+    expect(btn.querySelector(".pending-slot")).not.toBeNull();
+    expect(btn.contains(icon)).toBe(false);
+    expect(btn.contains(label)).toBe(true);
+    expect(label.textContent).toBe(" Label");
+    expect(btn.children.length).toBe(2);
+    expect(btn.dataset["asyncStatus"]).toBe("pending");
+
+    resolveFn!();
+    await promise;
+
+    // Success: pending node swapped for success node; label still present.
+    expect(btn.querySelector(".success-slot")).not.toBeNull();
+    expect(btn.querySelector(".pending-slot")).toBeNull();
+    expect(btn.contains(label)).toBe(true);
+    expect(btn.children.length).toBe(2);
+    expect(btn.dataset["asyncStatus"]).toBe("success");
+
+    vi.advanceTimersByTime(1200);
+
+    // Reset: the EXACT original icon node is restored (identity), not a clone.
+    expect(btn.children[0]).toBe(icon);
+    expect(btn.contains(icon)).toBe(true);
+    expect(btn.querySelector(".success-slot")).toBeNull();
+    expect(btn.contains(label)).toBe(true);
+    expect(btn.dataset["asyncStatus"]).toBeUndefined();
+    expect(btn.disabled).toBe(false);
+  });
+
+  // (b) target + resetMs:0 — persist the outcome glyph; button re-enabled.
+  it("target + resetMs:0 persists the outcome glyph and re-enables the button", async () => {
+    const { btn, icon, label } = makeIconButton();
+    await withAsyncFeedback(btn, () => Promise.resolve(), {
+      target: icon,
+      resetMs: 0,
+      renderSuccess: () => mk("success-slot"),
+    });
+
+    expect(btn.dataset["asyncStatus"]).toBe("success");
+    expect(btn.querySelector(".success-slot")).not.toBeNull();
+    expect(btn.disabled).toBe(false);
+
+    // No revert timer was scheduled: advancing time changes nothing.
+    vi.advanceTimersByTime(5000);
+    expect(btn.querySelector(".success-slot")).not.toBeNull();
+    expect(btn.contains(icon)).toBe(false);
+    expect(btn.contains(label)).toBe(true);
+    expect(btn.dataset["asyncStatus"]).toBe("success");
+  });
+
+  // (c) error path in target mode -> renderError node.
+  it("target mode error path swaps in the error node", async () => {
+    const { btn, icon } = makeIconButton();
+    await withAsyncFeedback(btn, () => Promise.reject(new Error("nope")), {
+      target: icon,
+      renderError: () => mk("error-slot"),
+      renderSuccess: () => mk("success-slot"),
+    });
+
+    expect(btn.dataset["asyncStatus"]).toBe("error");
+    expect(btn.querySelector(".error-slot")).not.toBeNull();
+    expect(btn.querySelector(".success-slot")).toBeNull();
+
+    vi.advanceTimersByTime(1200);
+    expect(btn.contains(icon)).toBe(true);
+    expect(btn.querySelector(".error-slot")).toBeNull();
+    expect(btn.dataset["asyncStatus"]).toBeUndefined();
+  });
+
+  // (d) persist on the WHOLE-BUTTON path (resetMs:0, no target).
+  it("resetMs:0 on the whole-button path persists the glyph (no revert)", async () => {
+    const btn = makeButton("<span>Original</span>");
+    await withAsyncFeedback(btn, () => Promise.resolve(), { resetMs: 0 });
+
+    expect(btn.dataset["asyncStatus"]).toBe("success");
+    expect(btn.querySelector(".btn-async-glyph")).not.toBeNull();
+    expect(btn.disabled).toBe(false);
+
+    vi.advanceTimersByTime(5000);
+    expect(btn.querySelector(".btn-async-glyph")).not.toBeNull();
+    expect(btn.innerHTML).not.toContain("Original");
+    expect(btn.dataset["asyncStatus"]).toBe("success");
+  });
+
+  // (e) re-entry guard in target mode: second call while pending is a no-op.
+  it("rejects re-entry while pending in target mode (fn once, no double swap)", async () => {
+    const { btn, icon } = makeIconButton();
+    const fn = vi.fn(() => new Promise<void>((res) => setTimeout(res, 100)));
+
+    const first = withAsyncFeedback(btn, fn, {
+      target: icon,
+      renderPending: () => mk("pending-slot"),
+    });
+    const second = withAsyncFeedback(btn, fn, {
+      target: icon,
+      renderPending: () => mk("pending-slot"),
+    });
+
+    expect(fn).toHaveBeenCalledTimes(1);
+    expect(btn.querySelectorAll(".pending-slot").length).toBe(1);
+
+    await vi.advanceTimersByTimeAsync(100);
+    await Promise.all([first, second]);
+    expect(fn).toHaveBeenCalledTimes(1);
+  });
+
+  // (f) REGRESSION GUARD: whole-button default path is unchanged — single
+  // glyph via replaceChildren, disabled held through the glyph hold, content
+  // and disabled both restored at the default 1200ms reset.
+  it("regression: whole-button default path still replaceChildren + reverts", async () => {
+    const btn = makeButton("<span>Original</span>");
+    await withAsyncFeedback(btn, () => Promise.resolve(), {
+      renderSuccess: () => mk("success-slot"),
+    });
+
+    expect(btn.children.length).toBe(1);
+    expect(btn.querySelector(".success-slot")).not.toBeNull();
+    expect(btn.textContent).not.toContain("Original");
+    expect(btn.dataset["asyncStatus"]).toBe("success");
+    // Default path keeps the button disabled during the glyph hold (it is
+    // re-enabled only at reset) — this is the unchanged behavior persist diverges from.
+    expect(btn.disabled).toBe(true);
+
+    vi.advanceTimersByTime(1200);
+    expect(btn.innerHTML).toBe("<span>Original</span>");
+    expect(btn.disabled).toBe(false);
+    expect(btn.dataset["asyncStatus"]).toBeUndefined();
+  });
+
+  it("persist (resetMs:0) re-enables the button and allows a subsequent dispatch", async () => {
+    const btn = document.createElement("button");
+    document.body.append(btn);
+    let runs = 0;
+    await withAsyncFeedback(
+      btn,
+      async () => {
+        runs += 1;
+      },
+      { resetMs: 0 },
+    );
+    expect(runs).toBe(1);
+    expect(btn.disabled).toBe(false);
+    expect(btn.dataset["asyncStatus"]).toBe("success");
+    await withAsyncFeedback(
+      btn,
+      async () => {
+        runs += 1;
+      },
+      { resetMs: 0 },
+    );
+    expect(runs).toBe(2);
+    btn.remove();
+  });
+});
