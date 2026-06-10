@@ -116,6 +116,29 @@ const action = apiAction({
 - `API_TIMEOUT_MS` — default API request timeout (30 000 ms)
 - `RETRY_STANDARD` — standard retry config (2 retries, 300ms)
 
+### Test utilities (`@cplieger/actions/testing`)
+
+The `./testing` subpath exports test-only helpers. Import only from test code:
+
+```typescript
+import { resetActionFramework } from "@cplieger/actions/testing";
+
+beforeEach(() => {
+  resetActionFramework();
+});
+```
+
+- `resetActionFramework()` — clear every framework state slot (define, registry, cleanup, api, transport, notifier). Call from `beforeEach()` to isolate tests.
+
+> **Breaking change in v2.0:** the `./src/*` deep-import escape hatch was removed
+> from `package.json` exports. Consumers that previously reached into
+> `@cplieger/actions/src/define`, `…/src/registry`, `…/src/cleanup`,
+> `…/src/api`, `…/src/transport`, or `…/src/notifier` to call
+> `_resetForTest`/`_resetApiConfigForTest`/`_resetTransportForTest`/
+> `_resetNotifierForTest` must migrate to
+> `@cplieger/actions/testing` for `resetActionFramework()`, or to the
+> public surface for everything else.
+
 ### Definition-level callbacks (TanStack Query pattern)
 
 `ActionDefinition` supports `onSuccess`, `onError`, and `onSettled` callbacks that fire on every dispatch without the caller needing to pass them each time:
