@@ -3,7 +3,8 @@
 [![CI](https://github.com/cplieger/actions/actions/workflows/ci.yaml/badge.svg)](https://github.com/cplieger/actions/actions/workflows/ci.yaml)
 [![npm](https://img.shields.io/npm/v/@cplieger/actions)](https://www.npmjs.com/package/@cplieger/actions)
 [![JSR](https://jsr.io/badges/@cplieger/actions)](https://jsr.io/@cplieger/actions)
-[![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue.svg)](./LICENSE)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/cplieger/actions/badge)](https://scorecard.dev/viewer/?uri=github.com/cplieger/actions)
+[![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue.svg)](LICENSE)
 
 > Declarative UI-actions framework with lifecycle management, retry, debounce, and polling.
 
