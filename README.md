@@ -1,11 +1,11 @@
 # actions
 
-[![CI](https://github.com/cplieger/actions/actions/workflows/ci.yaml/badge.svg)](https://github.com/cplieger/actions/actions/workflows/ci.yaml)
 [![npm](https://img.shields.io/npm/v/@cplieger/actions)](https://www.npmjs.com/package/@cplieger/actions)
 [![JSR](https://jsr.io/badges/@cplieger/actions)](https://jsr.io/@cplieger/actions)
-[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/cplieger/actions/badge)](https://scorecard.dev/viewer/?uri=github.com/cplieger/actions)
-[![Coverage](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/cplieger/actions/badges/coverage.json)](https://github.com/cplieger/actions/actions/workflows/coverage.yml)
+[![Node version](https://img.shields.io/node/v/@cplieger/actions)](https://www.npmjs.com/package/@cplieger/actions)
+[![Test coverage](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/cplieger/actions/badges/coverage.json)](https://github.com/cplieger/actions/actions/workflows/coverage.yml)
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/13197/badge)](https://www.bestpractices.dev/projects/13197)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/cplieger/actions/badge)](https://scorecard.dev/viewer/?uri=github.com/cplieger/actions)
 
 > Declarative UI-actions framework with lifecycle management, retry, debounce, and polling.
 
