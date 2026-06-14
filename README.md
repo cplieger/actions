@@ -4,6 +4,8 @@
 [![npm](https://img.shields.io/npm/v/@cplieger/actions)](https://www.npmjs.com/package/@cplieger/actions)
 [![JSR](https://jsr.io/badges/@cplieger/actions)](https://jsr.io/@cplieger/actions)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/cplieger/actions/badge)](https://scorecard.dev/viewer/?uri=github.com/cplieger/actions)
+[![Coverage](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/cplieger/actions/badges/coverage.json)](https://github.com/cplieger/actions/actions/workflows/coverage.yml)
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/13197/badge)](https://www.bestpractices.dev/projects/13197)
 
 > Declarative UI-actions framework with lifecycle management, retry, debounce, and polling.
 
