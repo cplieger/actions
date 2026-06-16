@@ -33,6 +33,13 @@ let _pendingTotal = 0;
 let _liveCount = 0;
 let _head = 0;
 
+// Test-only: when true, a detected _pendingTotal underflow throws instead of
+// the production warn + clamp, so an add/removePending pairing bug surfaces in
+// tests rather than being silently masked. Production default is false.
+// Toggled via _setThrowOnInvariantViolationForTest (same _*ForTest convention
+// as _resetForTest); reset to false by _resetForTest.
+let _throwOnInvariantViolation = false;
+
 // Reactive mirrors of the pending state. pendingByName remains the source of
 // truth; these signals expose the derived counts so isPending/pendingCount can
 // be read reactively (e.g. by bindLoadingState's effect).
@@ -153,6 +160,9 @@ export function record(instance: ActionInstance): void {
     compact();
   }
   if (_pendingTotal < 0) {
+    if (_throwOnInvariantViolation) {
+      throw new Error("[actions] _pendingTotal went negative — invariant violation");
+    }
     console.warn("[actions] _pendingTotal went negative — invariant violation; clamping to 0");
     _pendingTotal = 0;
     pendingTotalSig.value = 0;
@@ -243,6 +253,26 @@ export function _resetForTest(): void {
   listeners.clear();
   namedListeners.clear();
   _pendingTotal = 0;
+  _throwOnInvariantViolation = false;
   pendingSigs.clearAll();
   pendingTotalSig.value = 0;
+}
+
+/**
+ * @internal Test-only: toggle whether a detected `_pendingTotal` underflow
+ * throws (true) instead of the production warn + clamp (false). Lets tests
+ * assert that an add/removePending pairing bug surfaces loudly. Reset to false
+ * by `_resetForTest`.
+ */
+export function _setThrowOnInvariantViolationForTest(enabled: boolean): void {
+  _throwOnInvariantViolation = enabled;
+}
+
+/**
+ * @internal Test-only: simulate an unpaired `removePending` (an add/remove
+ * mismatch) by decrementing the pending total without a matching add, driving
+ * the invariant negative. The next `record()` then hits the clamp branch.
+ */
+export function _forcePendingUnderflowForTest(): void {
+  _pendingTotal--;
 }
