@@ -9,6 +9,8 @@ import {
   pendingCount,
   isPending,
   _resetForTest,
+  _setThrowOnInvariantViolationForTest,
+  _forcePendingUnderflowForTest,
 } from "./registry.js";
 import type { ActionInstance } from "./types.js";
 
@@ -267,5 +269,45 @@ describe("pendingByName index", () => {
     _resetForTest();
     expect(isPending("action.a")).toBe(false);
     expect(isPending("action.b")).toBe(false);
+  });
+});
+
+describe("_pendingTotal invariant clamp", () => {
+  it("production default (flag off) warns + clamps to 0, does not throw", () => {
+    const consoleSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    // Simulate an add/remove mismatch: an unpaired removePending drives the
+    // total negative. The next record() reaches the clamp branch.
+    _forcePendingUnderflowForTest();
+    expect(() => record(makeInstance({ id: "clamp-1", status: "success" }))).not.toThrow();
+    expect(consoleSpy).toHaveBeenCalledWith(
+      "[actions] _pendingTotal went negative — invariant violation; clamping to 0",
+    );
+    // Clamped back to a sane value (no negative leak into pendingCount).
+    expect(pendingCount()).toBe(0);
+    consoleSpy.mockRestore();
+  });
+
+  it("test flag on: a negative _pendingTotal throws instead of being masked", () => {
+    const consoleSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    _setThrowOnInvariantViolationForTest(true);
+    // Same deliberate add/remove mismatch as above.
+    _forcePendingUnderflowForTest();
+    expect(() => record(makeInstance({ id: "throw-1", status: "success" }))).toThrow(
+      "[actions] _pendingTotal went negative — invariant violation",
+    );
+    // It threw at the clamp, before the warn + clamp ran.
+    expect(consoleSpy).not.toHaveBeenCalled();
+    consoleSpy.mockRestore();
+  });
+
+  it("_resetForTest restores the production default (flag off)", () => {
+    const consoleSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    _setThrowOnInvariantViolationForTest(true);
+    _resetForTest();
+    // After reset the flag is back to false: warn + clamp, no throw.
+    _forcePendingUnderflowForTest();
+    expect(() => record(makeInstance({ id: "reset-1", status: "success" }))).not.toThrow();
+    expect(consoleSpy).toHaveBeenCalled();
+    consoleSpy.mockRestore();
   });
 });
