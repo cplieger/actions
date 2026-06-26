@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 vi.mock("./notifier.js", () => ({
   configure: vi.fn(),
   notifySuccess: vi.fn(),
@@ -15,6 +15,10 @@ beforeEach(() => {
   resetDefine();
   resetRegistry();
   resetCleanup();
+});
+afterEach(() => {
+  // Guard against a fake-timer test leaking into the next one.
+  vi.useRealTimers();
 });
 
 // ---------------------------------------------------------------------------
@@ -165,12 +169,46 @@ describe("per-dispatch abort handle (RTK pattern)", () => {
     expect(r2).toBe("two"); // unaffected
   });
 
-  it("abort() after completion is a no-op", async () => {
-    const action = defineAction({ name: "handle.noop", run: async () => "done" });
-    const handle = action.dispatch("a");
+  it("abort() after settlement does not re-fire settle callbacks", async () => {
+    const onSettled = vi.fn();
+    const action = defineAction({ name: "handle.after_settle", run: async () => "done" });
+    const handle = action.dispatch("a", { onSettled });
     const result = await handle;
-    handle.abort(); // should not throw
     expect(result).toBe("done");
+    expect(onSettled).toHaveBeenCalledTimes(1);
+    handle.abort(); // post-settlement abort must be a no-op
+    await Promise.resolve();
+    expect(onSettled).toHaveBeenCalledTimes(1);
+  });
+
+  it("double abort() neither throws nor double-fires settle callbacks", async () => {
+    const onSettled = vi.fn();
+    const action = defineAction({
+      name: "handle.double_abort",
+      run: (_args, signal) =>
+        new Promise<string>((resolve, reject) => {
+          signal.addEventListener("abort", () => reject(new Error("aborted")));
+          setTimeout(() => resolve("late"), 1000);
+        }),
+    });
+    const handle = action.dispatch("x", { onSettled });
+    handle.abort();
+    handle.abort();
+    const result = await handle;
+    expect(result).toBeNull();
+    expect(onSettled).toHaveBeenCalledTimes(1);
+  });
+
+  it("abort() before the run starts records the dispatch as cancelled", async () => {
+    const action = defineAction({
+      name: "handle.abort_pre_run",
+      run: async () => "should not reach",
+    });
+    const handle = action.dispatch("x");
+    handle.abort();
+    const result = await handle;
+    expect(result).toBeNull();
+    expect(getActionLog().find((e) => e.name === "handle.abort_pre_run")?.status).toBe("cancelled");
   });
 });
 
@@ -203,6 +241,65 @@ describe("timeout option on ActionDefinition", () => {
     });
     const result = await action.dispatch("x");
     expect(result).toBe("fast");
+  });
+
+  it("classifies a timeout as an error with code 'timeout', not 'cancelled'", async () => {
+    const action = defineAction({
+      name: "timeout.error_code",
+      timeout: 10,
+      run: (_a, signal) =>
+        new Promise<string>((_resolve, reject) => {
+          signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+        }),
+    });
+    const result = await action.dispatch("x");
+    expect(result).toBeNull();
+    const entry = getActionLog().find(
+      (e) => e.name === "timeout.error_code" && e.status !== "pending",
+    );
+    expect(entry?.status).toBe("error");
+    expect(entry?.error?.code).toBe("timeout");
+  });
+
+  it("reports error code 'timeout' when the timeout fires during retry backoff", async () => {
+    let attempt = 0;
+    const action = defineAction({
+      name: "timeout.during_backoff",
+      timeout: 80,
+      retry: { count: 3, delay: 200 },
+      retryable: () => true,
+      run: async () => {
+        attempt++;
+        throw new Error("transient");
+      },
+    });
+    const result = await action.dispatch("x");
+    expect(result).toBeNull();
+    const entry = getActionLog().find((e) => e.name === "timeout.during_backoff");
+    expect(entry?.status).toBe("error");
+    expect(entry?.error?.code).toBe("timeout");
+    expect(attempt).toBeGreaterThanOrEqual(1);
+  });
+
+  it("cancelling before the timeout fires leaves no dangling timeout error", async () => {
+    vi.useFakeTimers();
+    const onError = vi.fn();
+    const action = defineAction({
+      name: "timeout.cancel_before",
+      timeout: 5000,
+      run: (_a, signal) =>
+        new Promise<string>((_resolve, reject) => {
+          signal.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
+        }),
+    });
+    const handle = action.dispatch("x", { onError });
+    handle.abort();
+    const result = await handle;
+    expect(result).toBeNull();
+    // Advancing past the original timeout must not produce a late error callback.
+    await vi.advanceTimersByTimeAsync(10000);
+    expect(onError).not.toHaveBeenCalled();
+    vi.useRealTimers();
   });
 });
 

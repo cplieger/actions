@@ -174,3 +174,32 @@ describe("throwing callbacks don't break scope chain", () => {
     expect(entry?.status).toBe("success");
   });
 });
+
+describe("re-entrant dispatch into the same scope", () => {
+  it("dispatching B from inside A's run (un-awaited) runs B after A completes", async () => {
+    let innerResult: string | null = null;
+    const actionB = defineAction({
+      name: "test.reentrant_B",
+      scope: "reentrant",
+      run: async () => "B-done",
+    });
+    const actionA = defineAction({
+      name: "test.reentrant_A",
+      scope: "reentrant",
+      run: async () => {
+        // Dispatch B into the same scope without awaiting it — awaiting here
+        // would deadlock by design, since B queues behind A.
+        const handleB = actionB.dispatch("b");
+        void handleB.then((r) => {
+          innerResult = r;
+        });
+        return "A-done";
+      },
+    });
+    const resultA = await actionA.dispatch("a");
+    expect(resultA).toBe("A-done");
+    // B was queued behind A and runs once A's scope slot frees.
+    await new Promise((r) => setTimeout(r, 10));
+    expect(innerResult).toBe("B-done");
+  });
+});
