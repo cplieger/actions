@@ -6,6 +6,7 @@ import {
   record,
   subscribe,
   recentLog,
+  getActionLog,
   pendingCount,
   isPending,
   _resetForTest,
@@ -149,6 +150,18 @@ describe("recentLog", () => {
     record(makeInstance({ id: "third", status: "success" }));
     const log = recentLog();
     expect(log.map((e) => e.id)).toEqual(["first", "second", "third"]);
+  });
+});
+
+describe("getActionLog snapshot isolation", () => {
+  it("returns a snapshot — mutating the returned array does not affect the internal log", () => {
+    record(makeInstance({ id: "snap-1", status: "success" }));
+    record(makeInstance({ id: "snap-2", status: "success" }));
+    const snapshot = getActionLog();
+    expect(snapshot).toHaveLength(2);
+    // A caller mutating the returned array must not corrupt internal state.
+    (snapshot as unknown[]).length = 0;
+    expect(getActionLog()).toHaveLength(2);
   });
 });
 

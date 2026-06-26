@@ -7,7 +7,7 @@ vi.mock("./notifier.js", () => ({
   _resetNotifierForTest: vi.fn(),
 }));
 import { defineAction, _resetForTest as resetDefine, _internalsForTest } from "./define.js";
-import { _resetForTest as resetRegistry } from "./registry.js";
+import { _resetForTest as resetRegistry, recentLog } from "./registry.js";
 import { _resetForTest as resetCleanup } from "./cleanup.js";
 import { ActionError } from "./error.js";
 
@@ -169,6 +169,30 @@ describe("dedupe + cancel interaction", () => {
     const { activeDedupes } = _internalsForTest();
     expect(activeDedupes).toBe(0);
   });
+
+  it("aborting a deduped follower is a no-op — it still settles with the leader's result", async () => {
+    let leaderResolve!: (v: string) => void;
+    const action = defineAction<string, string>({
+      name: "test.dedupe_follower_abort",
+      dedupe: true,
+      error: false,
+      run: () =>
+        new Promise<string>((r) => {
+          leaderResolve = r;
+        }),
+    });
+    const onSettled2 = vi.fn();
+    const h1 = action.dispatch("a");
+    const h2 = action.dispatch("a", { onSettled: onSettled2 });
+    // The follower shares the leader's promise, so aborting its handle does nothing.
+    h2.abort();
+    leaderResolve("done");
+    const r1 = await h1;
+    const r2 = await h2;
+    expect(r1).toBe("done");
+    expect(r2).toBe("done");
+    expect(onSettled2).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("interleaved cross-action scope chain ordering", () => {
@@ -209,5 +233,132 @@ describe("interleaved cross-action scope chain ordering", () => {
     await action.dispatch(3);
     const { scopeChains } = _internalsForTest();
     expect(scopeChains).toBe(0);
+  });
+});
+
+describe("handle.abort() on a scope-queued dispatch", () => {
+  it("cancels the queued dispatch without running it once the scope frees", async () => {
+    const runSpy = vi.fn().mockResolvedValue("ok");
+    let blockerResolve: ((v: string) => void) | undefined;
+    const blocker = defineAction({
+      name: "test.queued_abort_blocker",
+      scope: "queued-abort",
+      run: () =>
+        new Promise<string>((resolve) => {
+          blockerResolve = resolve;
+        }),
+    });
+    const target = defineAction({
+      name: "test.queued_abort_target",
+      scope: "queued-abort",
+      run: runSpy,
+    });
+    const h1 = blocker.dispatch("a");
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(blockerResolve).toBeDefined();
+    const h2 = target.dispatch("b");
+    h2.abort();
+    blockerResolve!("done");
+    await h1;
+    const r2 = await h2;
+    expect(r2).toBeNull();
+    expect(runSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe("dedupe key namespacing", () => {
+  it("two actions with the same args but different names do not share a dedupe slot", async () => {
+    const action1 = defineAction({
+      name: "test.dedupe_ns_1",
+      dedupe: true,
+      run: async () => "result1",
+    });
+    const action2 = defineAction({
+      name: "test.dedupe_ns_2",
+      dedupe: true,
+      run: async () => "result2",
+    });
+    const [r1, r2] = await Promise.all([
+      action1.dispatch("same-args"),
+      action2.dispatch("same-args"),
+    ]);
+    expect(r1).toBe("result1");
+    expect(r2).toBe("result2");
+  });
+});
+
+describe("cancel during retry backoff with scope + dedupe + timeout", () => {
+  it("records cancelled and leaves no dedupe slot behind", async () => {
+    let attempt = 0;
+    const action = defineAction({
+      name: "test.cancel_backoff_combined",
+      scope: "combined-scope",
+      dedupe: true,
+      timeout: 5000,
+      retry: { count: 5, delay: 100 },
+      retryable: () => true,
+      run: async (_a, signal) => {
+        attempt++;
+        if (attempt <= 2) throw new Error("transient");
+        await new Promise<never>((_r, reject) => {
+          signal.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
+        });
+      },
+    });
+    const handle = action.dispatch("x");
+    await new Promise((r) => setTimeout(r, 50));
+    action.cancel();
+    const result = await handle;
+    expect(result).toBeNull();
+    const entry = recentLog().find((e) => e.name === "test.cancel_backoff_combined");
+    expect(entry?.status).toBe("cancelled");
+    expect(_internalsForTest().activeDedupes).toBe(0);
+  });
+});
+
+describe("scope chain release after run settles abnormally", () => {
+  it("releases the scope chain after run() throws so the next dispatch proceeds", async () => {
+    let callCount = 0;
+    const action = defineAction({
+      name: "test.scope_release_throw",
+      scope: "release-throw",
+      error: false,
+      run: async () => {
+        callCount++;
+        if (callCount === 1) throw new Error("first fails");
+        return "second-ok";
+      },
+    });
+    const r1 = await action.dispatch("a");
+    expect(r1).toBeNull();
+    const r2 = await action.dispatch("b");
+    expect(r2).toBe("second-ok");
+    expect(_internalsForTest().scopeChains).toBe(0);
+  });
+
+  it("releases the scope chain after a cancel so the next dispatch proceeds", async () => {
+    let resolve1!: (v: string) => void;
+    const action = defineAction<string, string>({
+      name: "test.scope_release_cancel",
+      scope: "release-cancel",
+      error: false,
+      run: (args) => {
+        if (args === "first") {
+          return new Promise<string>((r) => {
+            resolve1 = r;
+          });
+        }
+        return Promise.resolve("second-ok");
+      },
+    });
+    const h1 = action.dispatch("first");
+    await Promise.resolve();
+    h1.abort();
+    resolve1("ignored");
+    await h1;
+    const r2 = await action.dispatch("second");
+    expect(r2).toBe("second-ok");
+    expect(_internalsForTest().scopeChains).toBe(0);
   });
 });

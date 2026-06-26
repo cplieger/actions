@@ -11,7 +11,7 @@ vi.mock("./notifier.js", () => ({
 
 import { apiAction, configureApi, _resetApiConfigForTest } from "./api.js";
 import { _resetForTest as resetDefine } from "./define.js";
-import { _resetForTest as resetRegistry } from "./registry.js";
+import { _resetForTest as resetRegistry, recentLog } from "./registry.js";
 import { _resetForTest as resetCleanup } from "./cleanup.js";
 
 const mockFetch = vi.fn();
@@ -49,6 +49,52 @@ describe("configureApi — baseUrl", () => {
     });
     await action.dispatch("1");
     expect(mockFetch.mock.calls[0]![0]).toBe("/items/1");
+  });
+
+  it("collapses the double slash when baseUrl ends with '/' and path starts with '/'", async () => {
+    configureApi({ baseUrl: "https://api.example.com/" });
+    mockFetch.mockResolvedValue(new Response(JSON.stringify({}), { status: 200 }));
+    const action = apiAction<string>({
+      name: "base.double_slash",
+      request: (id) => ({ method: "GET", path: `/items/${id}` }),
+    });
+    await action.dispatch("42");
+    const url = mockFetch.mock.calls[0]![0] as string;
+    expect(url).toBe("https://api.example.com/items/42");
+    expect(url).not.toContain("//items");
+  });
+
+  it("inserts a single slash when baseUrl has a trailing slash and the path has none", async () => {
+    configureApi({ baseUrl: "https://api.example.com/" });
+    mockFetch.mockResolvedValue(new Response(JSON.stringify({}), { status: 200 }));
+    const action = apiAction<string>({
+      name: "base.no_leading_slash",
+      request: () => ({ method: "GET", path: "items" }),
+    });
+    await action.dispatch("x");
+    expect(mockFetch.mock.calls[0]![0]).toBe("https://api.example.com/items");
+  });
+
+  it("preserves the query string when joining baseUrl", async () => {
+    configureApi({ baseUrl: "https://api.example.com/v1" });
+    mockFetch.mockResolvedValue(new Response(JSON.stringify({}), { status: 200 }));
+    const action = apiAction<string>({
+      name: "base.query",
+      request: () => ({ method: "GET", path: "/items?foo=bar&baz=1" }),
+    });
+    await action.dispatch("x");
+    expect(mockFetch.mock.calls[0]![0]).toBe("https://api.example.com/v1/items?foo=bar&baz=1");
+  });
+
+  it("preserves the query string when baseUrl has a trailing slash", async () => {
+    configureApi({ baseUrl: "https://api.example.com/" });
+    mockFetch.mockResolvedValue(new Response(JSON.stringify({}), { status: 200 }));
+    const action = apiAction<string>({
+      name: "base.query_trailing",
+      request: () => ({ method: "GET", path: "/search?q=hello&page=2" }),
+    });
+    await action.dispatch("x");
+    expect(mockFetch.mock.calls[0]![0]).toBe("https://api.example.com/search?q=hello&page=2");
   });
 });
 
@@ -122,6 +168,102 @@ describe("configureApi — prepareHeaders", () => {
     // prepareHeaders runs after spec headers, so it overrides
     expect(headers["x-override"]).toBe("from-global");
   });
+
+  it("surfaces an async prepareHeaders rejection as an action error without calling fetch", async () => {
+    configureApi({
+      prepareHeaders: async () => {
+        throw new Error("token refresh failed");
+      },
+    });
+    mockFetch.mockResolvedValue(new Response(JSON.stringify({}), { status: 200 }));
+    const action = apiAction<string>({
+      name: "prep.async_reject",
+      request: () => ({ method: "GET", path: "/x" }),
+    });
+    const result = await action.dispatch("x");
+    expect(result).toBeNull();
+    expect(recentLog()[0]?.status).toBe("error");
+    expect(recentLog()[0]?.error?.message).toContain("token refresh failed");
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it("surfaces a synchronous prepareHeaders throw as an action error without calling fetch", async () => {
+    configureApi({
+      prepareHeaders: () => {
+        throw new Error("sync boom");
+      },
+    });
+    mockFetch.mockResolvedValue(new Response(JSON.stringify({}), { status: 200 }));
+    const action = apiAction<string>({
+      name: "prep.sync_throw",
+      request: () => ({ method: "GET", path: "/x" }),
+    });
+    const result = await action.dispatch("x");
+    expect(result).toBeNull();
+    expect(recentLog()[0]?.status).toBe("error");
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it("surfaces a non-Error prepareHeaders rejection as an action error", async () => {
+    configureApi({
+      prepareHeaders: () => Promise.reject("string-rejection"),
+    });
+    mockFetch.mockResolvedValue(new Response("{}", { status: 200 }));
+    const action = apiAction<void>({
+      name: "prep.string_reject",
+      request: () => ({ method: "GET", path: "/x" }),
+    });
+    const result = await action.dispatch(undefined);
+    expect(result).toBeNull();
+    expect(recentLog()[0]?.status).toBe("error");
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it("gives each request a fresh Headers object (no cross-request mutation)", async () => {
+    const headersReceived: Headers[] = [];
+    configureApi({
+      prepareHeaders: (headers) => {
+        headersReceived.push(headers);
+        headers.set("X-Count", String(headersReceived.length));
+      },
+    });
+    mockFetch.mockResolvedValue(new Response(JSON.stringify({}), { status: 200 }));
+    const action = apiAction<string>({
+      name: "prep.isolation",
+      request: () => ({ method: "GET", path: "/x" }),
+    });
+    await action.dispatch("a");
+    await action.dispatch("b");
+    expect(headersReceived[0]).not.toBe(headersReceived[1]);
+    const h1 = mockFetch.mock.calls[0]![1].headers as Record<string, string>;
+    const h2 = mockFetch.mock.calls[1]![1].headers as Record<string, string>;
+    expect(h1["x-count"]).toBe("1");
+    expect(h2["x-count"]).toBe("2");
+  });
+
+  it("aborting during an in-flight prepareHeaders records the action as cancelled", async () => {
+    let releasePrep!: () => void;
+    const prepGate = new Promise<void>((r) => {
+      releasePrep = r;
+    });
+    configureApi({
+      prepareHeaders: async (headers) => {
+        await prepGate;
+        headers.set("Authorization", "Bearer token");
+      },
+    });
+    mockFetch.mockResolvedValue(new Response(JSON.stringify({}), { status: 200 }));
+    const action = apiAction<string>({
+      name: "prep.abort_during",
+      request: () => ({ method: "GET", path: "/x" }),
+    });
+    const handle = action.dispatch("x");
+    handle.abort();
+    releasePrep();
+    const result = await handle;
+    expect(result).toBeNull();
+    expect(recentLog()[0]?.status).toBe("cancelled");
+  });
 });
 
 describe("configureApi — credentials", () => {
@@ -161,6 +303,48 @@ describe("configureApi — fetchFn", () => {
     expect(customFetch).toHaveBeenCalled();
     expect(mockFetch).not.toHaveBeenCalled();
     expect(result).toEqual({ custom: true });
+  });
+
+  it("surfaces a synchronous fetchFn throw as a classified network error", async () => {
+    configureApi({
+      fetchFn: () => {
+        throw new TypeError("sync network failure");
+      },
+    });
+    const action = apiAction<string>({
+      name: "fetch.sync_throw",
+      request: () => ({ method: "GET", path: "/x" }),
+    });
+    const result = await action.dispatch("x");
+    expect(result).toBeNull();
+    expect(recentLog()[0]?.status).toBe("error");
+    expect(recentLog()[0]?.error?.code).toBe("network");
+  });
+
+  it("surfaces an error when fetchFn resolves to null", async () => {
+    configureApi({
+      fetchFn: (async () => null) as unknown as typeof fetch,
+    });
+    const action = apiAction<string>({
+      name: "fetch.null",
+      request: () => ({ method: "GET", path: "/x" }),
+    });
+    const result = await action.dispatch("x");
+    expect(result).toBeNull();
+    expect(recentLog()[0]?.status).toBe("error");
+  });
+
+  it("surfaces an error when fetchFn resolves to a non-object", async () => {
+    configureApi({
+      fetchFn: (async () => 42) as unknown as typeof fetch,
+    });
+    const action = apiAction<string>({
+      name: "fetch.non_object",
+      request: () => ({ method: "GET", path: "/x" }),
+    });
+    const result = await action.dispatch("x");
+    expect(result).toBeNull();
+    expect(recentLog()[0]?.status).toBe("error");
   });
 });
 
