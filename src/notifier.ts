@@ -12,7 +12,13 @@ export interface NotifierRetry {
  *  and pass it to `configure()` to wire up toast/notification display.
  *
  *  All methods are optional — when not provided, the framework silently
- *  drops the notification (useful for headless/test environments). */
+ *  drops the notification (useful for headless/test environments).
+ *
+ *  SECURITY: the `message` passed to `error()` (and `success()`) may contain
+ *  server-controlled text — e.g. an HTTP error body's `error` field surfaced via
+ *  ActionError.message, or a transport `r.error`. Render it as TEXT (textContent /
+ *  a text node), never via innerHTML, to avoid reflected XSS from a malicious or
+ *  compromised server response. */
 export interface Notifier {
   success?(message: string): void;
   error?(message: string, retry?: NotifierRetry): void;

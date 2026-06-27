@@ -222,7 +222,12 @@ export function recentLog(): readonly ActionInstance[] {
 }
 
 /** Read the recent action log. Useful for devtools integration and
- *  debugging panels. Returns a snapshot of all live entries. */
+ *  debugging panels. Returns a snapshot of all live entries.
+ *
+ *  SECURITY/PRIVACY: each entry retains the full dispatch `args` in memory (up to
+ *  MAX_LOG_SIZE entries), `subscribeToActions` fans `args` out to every listener, and
+ *  buildRetryButton retains a structuredClone of `args` in the error-notification
+ *  retry closure. Do NOT put secrets, tokens, or PII in action args. */
 export const getActionLog = recentLog;
 
 /** O(1) check: true if at least one instance of the named action is pending.

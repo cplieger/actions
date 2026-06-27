@@ -32,7 +32,11 @@ const JSON_CT = "application/json";
 
 /** Configuration for the global API fetch layer. Set via `configureApi()`. */
 export interface ApiConfig {
-  /** Base URL prepended to every RequestSpec.path (e.g. "https://api.example.com/v1"). */
+  /** Base URL prepended to every RequestSpec.path (e.g. "https://api.example.com/v1").
+   *  `RequestSpec.path` is treated as a RELATIVE path: when this is set, an absolute or
+   *  protocol-relative path cannot override the origin (it is kept as a path segment).
+   *  When this is UNSET, `RequestSpec.path` is passed to fetch() verbatim, so the caller
+   *  owns the full URL and must never pass untrusted input as the whole path. */
   readonly baseUrl?: string;
   /** Inject headers on every request. Receives current headers + the request spec.
    *  Mutate and/or return the headers object. May be async (e.g. to read a token store). */
@@ -124,13 +128,18 @@ async function executeRequest<T>(
       headers.set(k, v);
     }
   }
-  // Global prepareHeaders hook
+  // Global prepareHeaders hook. Honor a returned Headers (RTK convention), falling
+  // back to the mutated instance when the hook returns undefined.
+  let effectiveHeaders = headers;
   if (cfg.prepareHeaders !== undefined) {
-    await cfg.prepareHeaders(headers, { spec });
+    const prepared = await cfg.prepareHeaders(headers, { spec });
+    if (prepared !== undefined) {
+      effectiveHeaders = prepared;
+    }
   }
   // Convert Headers to plain object for RequestInit
   const headerObj: Record<string, string> = {};
-  headers.forEach((v, k) => {
+  effectiveHeaders.forEach((v, k) => {
     headerObj[k.toLowerCase()] = v;
   });
   if (Object.keys(headerObj).length > 0) {
@@ -144,6 +153,11 @@ async function executeRequest<T>(
 
   init.signal = withTimeout(signal, API_TIMEOUT_MS);
 
+  // CONTRACT: spec.path is a RELATIVE path. With baseUrl set, the base scheme+host
+  // precede it, so an absolute ('https://...') or protocol-relative ('//host') path is
+  // neutralised (kept as a path segment) and cannot override the origin. With baseUrl
+  // UNSET, spec.path is passed to fetch() verbatim, so the caller owns the full URL and
+  // must never pass untrusted input (e.g. a server-supplied string) as the whole path.
   // Resolve URL: prepend baseUrl if configured, normalizing double slashes at the join
   let url: string;
   if (cfg.baseUrl !== undefined) {
