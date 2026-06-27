@@ -97,7 +97,9 @@ export interface ActionDefinition<TArgs, TResult, TOp = unknown> {
   /** Optional optimistic mutation. Runs synchronously before run(). */
   optimistic?: (args: TArgs) => TOp | undefined;
 
-  /** Undo the optimistic mutation. Called only if run() throws. */
+  /** Undo the optimistic mutation. Called on error OR cancellation (including a
+   *  cancellation that lands after run() resolves), never on success. The `err`
+   *  carries {code:'cancelled'} on the cancellation path. */
   rollback?: (args: TArgs, op: TOp | undefined, err: ActionErrorLike) => void;
 
   /** Notification on success. Default: no notification. */

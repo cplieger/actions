@@ -76,6 +76,8 @@ Options (mirrors RTK `fetchBaseQuery`):
 - `credentials` — `RequestInit.credentials` mode (e.g. `"include"` for cookies)
 - `fetchFn` — custom fetch implementation (SSR, testing)
 
+> **Path contract:** `RequestSpec.path` is expected to be a **relative** path. With `baseUrl` set, the configured scheme+host always precede it, so an absolute (`https://…`) or protocol-relative (`//host`) path is neutralised (kept as a path segment) and cannot override the origin. With `baseUrl` **unset**, `path` is passed to `fetch()` verbatim — the caller owns the full URL and must never pass untrusted input (e.g. a server-supplied string) as the whole path.
+
 Per-request headers can also be set directly on `RequestSpec`:
 
 ```typescript

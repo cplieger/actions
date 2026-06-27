@@ -10,7 +10,6 @@ import { _registerAction } from "./cleanup.js";
 import {
   safeInvoke,
   safeStringify,
-  _symbolMap,
   _resetSymbols,
   resolveNotification,
   defaultErrorPrefix,
@@ -50,8 +49,13 @@ export const IDEMPOTENCY_HEADER = "Idempotency-Key";
 
 function generateIdempotencyKey(): string {
   const ts = Date.now().toString(36);
-  const rnd = Math.random().toString(36).slice(2, 16).padEnd(14, "0");
-  return `${ts}-${rnd}`;
+  const buf = new Uint8Array(10);
+  crypto.getRandomValues(buf);
+  let rnd = "";
+  for (const b of buf) {
+    rnd += b.toString(36).padStart(2, "0");
+  }
+  return `${ts}-${rnd.slice(0, 14)}`;
 }
 
 const scopeChains = new Map<string, Promise<unknown>>();
@@ -67,6 +71,7 @@ interface DedupeSlot {
   promise: Promise<unknown> | undefined;
   error?: ActionErrorLike;
   cancelled?: boolean;
+  succeeded?: boolean;
 }
 const activeDedupes = new Map<string, DedupeSlot>();
 
@@ -112,31 +117,37 @@ export function defineAction<TArgs, TResult, TOp = unknown>(
     args: TArgs,
     opts: DispatchOptions<TArgs, TResult> = NO_OPTS,
   ): DispatchHandle<TResult> {
+    const fireSettledHooks = (): void => {
+      fireDefSettled(args);
+      const onSettledCb = opts.onSettled;
+      if (onSettledCb) {
+        safeInvoke(def.name, "onSettled", () => {
+          onSettledCb(args);
+        });
+      }
+    };
     const dedupeKey = dedupeKeyFor(args);
     if (dedupeKey !== null) {
       const entry = activeDedupes.get(dedupeKey);
       if (entry !== undefined) {
         const shared = entry.promise;
         if (shared === undefined) {
-          const onSettledCb = opts.onSettled;
-          if (onSettledCb) {
-            safeInvoke(def.name, "onSettled", () => {
-              onSettledCb(args);
-            });
-          }
+          fireSettledHooks();
           return makeHandle(Promise.resolve(null) as Promise<TResult | null>, NOOP);
         }
         const joined = (shared as Promise<TResult | null>).then(
           (v) => {
-            if (v !== null) {
+            if (v !== null || entry.succeeded === true) {
+              fireDefSuccess(v as TResult, args);
               const onSuccessCb = opts.onSuccess;
               if (onSuccessCb) {
                 safeInvoke(def.name, "onSuccess", () => {
-                  onSuccessCb(v, args);
+                  onSuccessCb(v as TResult, args);
                 });
               }
             } else if (entry.error !== undefined) {
               const capturedErr = entry.error;
+              fireDefError(capturedErr, args);
               const onErrorCb = opts.onError;
               if (onErrorCb) {
                 safeInvoke(def.name, "onError", () => {
@@ -144,28 +155,23 @@ export function defineAction<TArgs, TResult, TOp = unknown>(
                 });
               }
             } else if (entry.cancelled !== true) {
+              const dedupeErr: ActionErrorLike = {
+                message: "deduped dispatch did not succeed",
+                code: "dedupe",
+              };
+              fireDefError(dedupeErr, args);
               const onErrorCb = opts.onError;
               if (onErrorCb) {
                 safeInvoke(def.name, "onError", () => {
-                  onErrorCb({ message: "deduped dispatch did not succeed", code: "dedupe" }, args);
+                  onErrorCb(dedupeErr, args);
                 });
               }
             }
-            const onSettledCb = opts.onSettled;
-            if (onSettledCb) {
-              safeInvoke(def.name, "onSettled", () => {
-                onSettledCb(args);
-              });
-            }
+            fireSettledHooks();
             return v;
           },
           () => {
-            const onSettledCb = opts.onSettled;
-            if (onSettledCb) {
-              safeInvoke(def.name, "onSettled", () => {
-                onSettledCb(args);
-              });
-            }
+            fireSettledHooks();
             return null;
           },
         );
@@ -234,13 +240,7 @@ export function defineAction<TArgs, TResult, TOp = unknown>(
             completedAt: now,
           });
         } finally {
-          fireDefSettled(args);
-          const onSettledCb = opts.onSettled;
-          if (onSettledCb) {
-            safeInvoke(def.name, "onSettled", () => {
-              onSettledCb(args);
-            });
-          }
+          fireSettledHooks();
           earlyCancelResolve(null);
         }
       });
@@ -426,6 +426,9 @@ export function defineAction<TArgs, TResult, TOp = unknown>(
         result,
         attempts,
       });
+      if (dedupeEntry !== null) {
+        dedupeEntry.succeeded = true;
+      }
       evictDedupeSlot(dedupeKey, dedupeEntry);
       emitSuccessToast(args, result, opts);
       fireDefSuccess(result, args);

@@ -162,12 +162,30 @@ export async function withAsyncFeedback(
   const origNodes = useTarget ? [] : [...btn.childNodes].map((n) => n.cloneNode(true));
   const origDisabled = btn.disabled;
   const origAriaBusy = btn.getAttribute("aria-busy");
+  // Capture focus BEFORE disabling: `btn.disabled = true` (below) blurs the
+  // button, moving focus to <body>. We restore it once the button re-enables
+  // so a keyboard user who activated it does not lose their place.
+  const hadFocus = document.activeElement === btn;
 
   const restoreAriaBusy = (): void => {
     if (origAriaBusy === null) {
       btn.removeAttribute("aria-busy");
     } else {
       btn.setAttribute("aria-busy", origAriaBusy);
+    }
+  };
+
+  // Restore keyboard focus to the button after it re-enables, but only if it
+  // held focus before being disabled, is still connected and focusable, and
+  // focus has not since moved to a competing element (activeElement is <body>
+  // or null). Mirrors loading.ts's bindLoadingState/setIdle guard so the two
+  // helpers behave consistently and neither steals focus the user moved away.
+  const restoreFocus = (): void => {
+    if (hadFocus && btn.isConnected && !btn.disabled) {
+      const active = document.activeElement;
+      if (active === null || active === document.body) {
+        btn.focus();
+      }
     }
   };
 
@@ -217,6 +235,7 @@ export async function withAsyncFeedback(
   const reset = opts.resetMs ?? RESET_MS;
   if (reset <= 0) {
     btn.disabled = origDisabled;
+    restoreFocus();
     return;
   }
 
@@ -234,6 +253,7 @@ export async function withAsyncFeedback(
       btn.replaceChildren(...origNodes.map((n) => n.cloneNode(true)));
     }
     btn.disabled = origDisabled;
+    restoreFocus();
     delete btn.dataset["asyncStatus"];
   }, reset);
   resetTimers.set(btn, timerId);

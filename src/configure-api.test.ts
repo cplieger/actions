@@ -401,3 +401,27 @@ describe("RequestSpec.headers — per-request headers", () => {
     expect(headers["x-request-id"]).toBe("abc");
   });
 });
+
+describe("configureApi — prepareHeaders returns a Headers object", () => {
+  it("honors a Headers object returned by prepareHeaders, replacing the mutated instance", async () => {
+    configureApi({
+      prepareHeaders: (headers) => {
+        // Mutate the provided instance, then return a DIFFERENT Headers object
+        // (RTK convention). The returned object must win wholesale.
+        headers.set("X-Mutated", "ignored");
+        const replacement = new Headers();
+        replacement.set("Authorization", "Bearer returned");
+        return replacement;
+      },
+    });
+    mockFetch.mockResolvedValue(new Response(JSON.stringify({}), { status: 200 }));
+    const action = apiAction<string>({
+      name: "prep.returns_headers",
+      request: () => ({ method: "GET", path: "/x" }),
+    });
+    await action.dispatch("x");
+    const headers = mockFetch.mock.calls[0]![1].headers as Record<string, string>;
+    expect(headers["authorization"]).toBe("Bearer returned");
+    expect(headers["x-mutated"]).toBeUndefined();
+  });
+});

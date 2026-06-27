@@ -423,3 +423,138 @@ describe("withAsyncFeedback — target slot + persist", () => {
     btn.remove();
   });
 });
+
+describe("withAsyncFeedback — focus restore", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  // happy-dom does not blur an element when it becomes disabled, and ignores
+  // blur() on a disabled element — unlike a real browser, which drops focus to
+  // <body> the moment the button is disabled. Emulate that drop by parking
+  // focus on a throwaway enabled input and blurring it, which lands
+  // document.activeElement at null (one of the states the guard restores from).
+  function dropFocus(): void {
+    const sink = document.createElement("input");
+    document.body.appendChild(sink);
+    sink.focus();
+    sink.blur();
+    sink.remove();
+  }
+
+  // A keyboard user activates the button; disabling it during the async cycle
+  // drops focus away from it. When the timed reset re-enables the button,
+  // focus must return so the user does not lose their place.
+  it("restores focus to a focused button after the timed reset re-enables it", async () => {
+    const btn = makeButton();
+    btn.focus();
+    expect(document.activeElement).toBe(btn);
+
+    let resolveFn: (() => void) | undefined;
+    const work = new Promise<void>((res) => {
+      resolveFn = res;
+    });
+    const promise = withAsyncFeedback(btn, () => work);
+
+    // Simulate the disable dropping focus off the button.
+    dropFocus();
+    expect(document.activeElement).not.toBe(btn);
+
+    resolveFn!();
+    await promise;
+
+    // Outcome glyph is showing; the default path keeps the button disabled
+    // until the reset timer fires.
+    expect(btn.disabled).toBe(true);
+
+    vi.advanceTimersByTime(1200);
+    expect(btn.disabled).toBe(false);
+    expect(document.activeElement).toBe(btn);
+  });
+
+  // The persist path (resetMs <= 0) re-enables the button at outcome time
+  // rather than via a timer, so focus restore must happen there too.
+  it("restores focus via the persist path (resetMs:0)", async () => {
+    const btn = makeButton();
+    btn.focus();
+
+    let resolveFn: (() => void) | undefined;
+    const work = new Promise<void>((res) => {
+      resolveFn = res;
+    });
+    const promise = withAsyncFeedback(btn, () => work, { resetMs: 0 });
+
+    dropFocus();
+    expect(document.activeElement).not.toBe(btn);
+
+    resolveFn!();
+    await promise;
+
+    expect(btn.disabled).toBe(false);
+    expect(document.activeElement).toBe(btn);
+  });
+
+  // Guard: if the user moves focus to a competing element while the operation
+  // is in flight, the reset must NOT yank focus back to the button.
+  it("does not steal focus back when it moved to another element during the cycle", async () => {
+    const btn = makeButton();
+    const other = document.createElement("input");
+    document.body.appendChild(other);
+    btn.focus();
+    expect(document.activeElement).toBe(btn);
+
+    let resolveFn: (() => void) | undefined;
+    const work = new Promise<void>((res) => {
+      resolveFn = res;
+    });
+    const promise = withAsyncFeedback(btn, () => work);
+
+    // User tabs/clicks into another field mid-flight.
+    other.focus();
+    expect(document.activeElement).toBe(other);
+
+    resolveFn!();
+    await promise;
+    vi.advanceTimersByTime(1200);
+
+    // Focus stays on the element the user moved to.
+    expect(document.activeElement).toBe(other);
+    expect(btn.disabled).toBe(false);
+  });
+
+  // A button that did NOT have focus when the cycle started must not gain
+  // focus when it re-enables.
+  it("does not grab focus for a button that was never focused", async () => {
+    const btn = makeButton();
+    const other = document.createElement("input");
+    document.body.appendChild(other);
+    other.focus();
+    expect(document.activeElement).toBe(other);
+
+    await withAsyncFeedback(btn, () => Promise.resolve());
+    vi.advanceTimersByTime(1200);
+
+    expect(document.activeElement).toBe(other);
+    expect(btn.disabled).toBe(false);
+  });
+
+  it("does not grab focus when never focused even if nothing else holds focus", async () => {
+    // Isolates the `hadFocus` guard: nothing holds focus, so
+    // document.activeElement is <body> — a restore-eligible state, so only the
+    // hadFocus check stops the button stealing focus on completion. (The sibling
+    // "moved to another element" test cannot isolate this: there the activeElement
+    // check blocks restore regardless of hadFocus.)
+    const btn = makeButton();
+    expect(document.activeElement).toBe(document.body);
+
+    await withAsyncFeedback(btn, () => Promise.resolve());
+    vi.advanceTimersByTime(1200);
+
+    expect(btn.disabled).toBe(false);
+    expect(document.activeElement).toBe(document.body);
+  });
+});

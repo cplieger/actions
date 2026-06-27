@@ -126,6 +126,7 @@ export function pollAction<TArgs, TResult>(
       timer = undefined;
     }
     listenerCtrl.abort();
+    unregisterCleanup();
   }
 
   const listenerCtrl = new AbortController();
@@ -140,7 +141,7 @@ export function pollAction<TArgs, TResult>(
     window.addEventListener("focus", onFocus, { signal: listenerCtrl.signal });
   }
 
-  registerCleanup(stop);
+  const unregisterCleanup = registerCleanup(stop);
 
   if (!paused) {
     void tick();

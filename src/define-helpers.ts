@@ -19,7 +19,7 @@ export function safeInvoke(actionName: string, hookName: string, fn: () => void)
  *  the same description are distinct values but String(sym) is identical,
  *  so we assign each unique symbol a stable numeric ID. */
 let _symbolCounter = 0;
-export const _symbolMap = new Map<symbol, number>();
+const _symbolMap = new Map<symbol, number>();
 export function symbolId(sym: symbol): number {
   let id = _symbolMap.get(sym);
   if (id === undefined) {
@@ -55,9 +55,15 @@ export function safeStringify(args: unknown): string {
     return `@@sym${String(symbolId(args))}`;
   }
   try {
-    return JSON.stringify(args, (_key, value: unknown) =>
+    const out = JSON.stringify(args, (_key, value: unknown) =>
       value === undefined ? "__undef__" : value,
     );
+    // A top-level non-serializable value (a bare function) makes JSON.stringify
+    // return the value `undefined` rather than throw, so the catch never fires.
+    // Coerce to a stable string so distinct function args don't collide on a
+    // single `${name}::undefined` dedupe key.
+    // eslint-disable-next-line @typescript-eslint/no-base-to-string -- intentional fallback for non-serializable values
+    return typeof out === "string" ? out : String(args);
   } catch {
     // eslint-disable-next-line @typescript-eslint/no-base-to-string -- intentional fallback for cyclic objects
     return String(args);
@@ -83,9 +89,6 @@ export function resolveNotification<TArgs, TPayload>(
   }
   return spec(args, payload);
 }
-
-/** @deprecated Use {@link resolveNotification} instead. */
-export const resolveToast = resolveNotification;
 
 /** Build a default error notification prefix from the action name.
  *  Converts "chat.delete" -> "Delete failed". */

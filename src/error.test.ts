@@ -266,3 +266,30 @@ describe("classifyFetchError — TypeError branch", () => {
     expect(err.code).toBe("cancelled");
   });
 });
+
+describe("toActionError — AggregateError", () => {
+  it("uses the first inner error's message and code 'aggregate'", () => {
+    const agg = new AggregateError(
+      [new Error("first inner"), new Error("second inner")],
+      "all failed",
+    );
+    const result = toActionError(agg);
+    expect(result.message).toBe("first inner");
+    expect(result.code).toBe("aggregate");
+    expect(result.cause).toBe(agg);
+  });
+
+  it("falls back to the aggregate message when the first inner is not an Error", () => {
+    const agg = new AggregateError(["not-an-error"], "outer message");
+    const result = toActionError(agg);
+    expect(result.message).toBe("outer message");
+    expect(result.code).toBe("aggregate");
+  });
+
+  it("falls back to the aggregate message when there are no inner errors", () => {
+    const agg = new AggregateError([], "empty aggregate");
+    const result = toActionError(agg);
+    expect(result.message).toBe("empty aggregate");
+    expect(result.code).toBe("aggregate");
+  });
+});

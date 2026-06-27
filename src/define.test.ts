@@ -474,3 +474,134 @@ describe("defineAction — retryable error notification", () => {
     expect(notifier.notifyError).not.toHaveBeenCalled();
   });
 });
+
+describe("defineAction — deduped joiner fires definition-level callbacks", () => {
+  it("joiner fires def-level onSuccess before its own per-call onSuccess", async () => {
+    const defOnSuccess = vi.fn();
+    const defOnSettled = vi.fn();
+    const joinerOnSuccess = vi.fn();
+    const action = defineAction<string, string>({
+      name: "test.dedupe_join_success",
+      dedupe: true,
+      onSuccess: defOnSuccess,
+      onSettled: defOnSettled,
+      run: async () => "shared-result",
+    });
+    // Two concurrent dispatches with the same key: the second joins the first.
+    const originator = action.dispatch("k");
+    const joiner = action.dispatch("k", { onSuccess: joinerOnSuccess });
+    const [r1, r2] = await Promise.all([originator, joiner]);
+    expect(r1).toBe("shared-result");
+    expect(r2).toBe("shared-result");
+    // Both the originator AND the joiner fire the definition-level callbacks
+    // (pre-fix the joiner fired only its per-call callbacks, so this was 1).
+    expect(defOnSuccess).toHaveBeenCalledTimes(2);
+    expect(defOnSuccess).toHaveBeenCalledWith("shared-result", "k");
+    expect(defOnSettled).toHaveBeenCalledTimes(2);
+    expect(joinerOnSuccess).toHaveBeenCalledTimes(1);
+    // The joiner's def-level firing (the 2nd def call) precedes its per-call.
+    expect(defOnSuccess.mock.invocationCallOrder[1]!).toBeLessThan(
+      joinerOnSuccess.mock.invocationCallOrder[0]!,
+    );
+  });
+
+  it("joiner fires def-level onError before its own per-call onError", async () => {
+    const defOnError = vi.fn();
+    const defOnSettled = vi.fn();
+    const joinerOnError = vi.fn();
+    const action = defineAction<string, string>({
+      name: "test.dedupe_join_error",
+      dedupe: true,
+      error: false,
+      onError: defOnError,
+      onSettled: defOnSettled,
+      run: async () => {
+        throw new ActionError("boom");
+      },
+    });
+    const originator = action.dispatch("k");
+    const joiner = action.dispatch("k", { onError: joinerOnError });
+    await Promise.all([originator, joiner]);
+    expect(defOnError).toHaveBeenCalledTimes(2);
+    expect(defOnError).toHaveBeenCalledWith(expect.objectContaining({ message: "boom" }), "k");
+    expect(defOnSettled).toHaveBeenCalledTimes(2);
+    expect(joinerOnError).toHaveBeenCalledTimes(1);
+    expect(defOnError.mock.invocationCallOrder[1]!).toBeLessThan(
+      joinerOnError.mock.invocationCallOrder[0]!,
+    );
+  });
+
+  it("joiner treats an explicit null-result success as success, not a synthetic error", async () => {
+    const defOnSuccess = vi.fn();
+    const defOnError = vi.fn();
+    const joinerOnSuccess = vi.fn();
+    const joinerOnError = vi.fn();
+    const action = defineAction<string, string | null>({
+      name: "test.dedupe_join_null_success",
+      dedupe: true,
+      onSuccess: defOnSuccess,
+      onError: defOnError,
+      run: async () => null,
+    });
+    const originator = action.dispatch("k");
+    const joiner = action.dispatch("k", {
+      onSuccess: joinerOnSuccess,
+      onError: joinerOnError,
+    });
+    await Promise.all([originator, joiner]);
+    // A null result is a legitimate success; the joiner must not synthesise a
+    // "deduped dispatch did not succeed" error from it.
+    expect(defOnSuccess).toHaveBeenCalledTimes(2);
+    expect(defOnSuccess).toHaveBeenCalledWith(null, "k");
+    expect(joinerOnSuccess).toHaveBeenCalledTimes(1);
+    expect(joinerOnSuccess).toHaveBeenCalledWith(null, "k");
+    expect(defOnError).not.toHaveBeenCalled();
+    expect(joinerOnError).not.toHaveBeenCalled();
+  });
+});
+
+describe("defineAction — deduped joiner of a cancelled dispatch", () => {
+  it("joiner of a cancelled deduped dispatch fires only onSettled (no success/error)", async () => {
+    const defOnSuccess = vi.fn();
+    const defOnError = vi.fn();
+    const defOnSettled = vi.fn();
+    const joinerOnSuccess = vi.fn();
+    const joinerOnError = vi.fn();
+    const joinerOnSettled = vi.fn();
+    const action = defineAction<string, string>({
+      name: "test.dedupe_join_cancelled",
+      dedupe: true,
+      error: false,
+      onSuccess: defOnSuccess,
+      onError: defOnError,
+      onSettled: defOnSettled,
+      run: (_args, signal) =>
+        new Promise<string>((resolve, reject) => {
+          signal.addEventListener("abort", () => {
+            reject(new DOMException("aborted", "AbortError"));
+          });
+          setTimeout(() => {
+            resolve("late");
+          }, 10);
+        }),
+    });
+    const originator = action.dispatch("k");
+    const joiner = action.dispatch("k", {
+      onSuccess: joinerOnSuccess,
+      onError: joinerOnError,
+      onSettled: joinerOnSettled,
+    });
+    action.cancel();
+    const [r1, r2] = await Promise.all([originator, joiner]);
+    expect(r1).toBeNull();
+    expect(r2).toBeNull();
+    // A joiner attached to a dispatch that is then cancelled must settle
+    // silently: it fires neither onSuccess nor the synthetic "deduped dispatch
+    // did not succeed" onError, only onSettled.
+    expect(joinerOnSuccess).not.toHaveBeenCalled();
+    expect(joinerOnError).not.toHaveBeenCalled();
+    expect(joinerOnSettled).toHaveBeenCalledTimes(1);
+    expect(defOnSuccess).not.toHaveBeenCalled();
+    expect(defOnError).not.toHaveBeenCalled();
+  });
+});
