@@ -18,10 +18,7 @@ import { isPending, pendingCount } from "./registry.js";
 
 /** Element types that have a `.disabled` writable boolean. */
 type DisableableElement =
-  | HTMLButtonElement
-  | HTMLInputElement
-  | HTMLSelectElement
-  | HTMLTextAreaElement;
+  HTMLButtonElement | HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
 
 interface BindLoadingOptions {
   ariaBusy?: boolean;
