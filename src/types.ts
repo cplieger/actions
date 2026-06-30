@@ -50,9 +50,7 @@ export interface ActionInstance<TArgs = unknown, TResult = unknown> {
  *  computed from action args + result/error at call time. Pass false
  *  to opt out of the default notification for that branch. */
 export type NotificationSpec<TArgs, TPayload> =
-  | string
-  | ((args: TArgs, payload: TPayload) => string)
-  | false;
+  string | ((args: TArgs, payload: TPayload) => string) | false;
 
 /** @deprecated Use {@link NotificationSpec} instead. */
 export type ToastSpec<TArgs, TPayload> = NotificationSpec<TArgs, TPayload>;
