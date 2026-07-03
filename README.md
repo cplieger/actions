@@ -134,13 +134,11 @@ beforeEach(() => {
 - `resetActionFramework()` — clear every framework state slot (define, registry, cleanup, api, transport, notifier). Call from `beforeEach()` to isolate tests.
 
 > **Breaking change in v2.0:** the `./src/*` deep-import escape hatch was removed
-> from `package.json` exports. Consumers that previously reached into
-> `@cplieger/actions/src/define`, `…/src/registry`, `…/src/cleanup`,
-> `…/src/api`, `…/src/transport`, or `…/src/notifier` to call
-> `_resetForTest`/`_resetApiConfigForTest`/`_resetTransportForTest`/
-> `_resetNotifierForTest` must migrate to
-> `@cplieger/actions/testing` for `resetActionFramework()`, or to the
-> public surface for everything else.
+> from `package.json` exports. Migrate any deep `/src/*` import to
+> `@cplieger/actions/testing` (`resetActionFramework()`), or to the public API
+> for everything else. The [release notes](https://github.com/cplieger/actions/releases)
+> list the removed subpaths and the old `_reset*ForTest` helpers that
+> `resetActionFramework()` supersedes.
 
 ### Definition-level callbacks (TanStack Query pattern)
 
@@ -198,6 +196,12 @@ The following features are intentionally not implemented:
 | `onProgress` callback                  | Transport-specific. Consumers wire progress in their `run()` implementation.                      |
 | Batch dispatch                         | Store-level concern. This library doesn't own a store.                                            |
 | `dispose()` / action deregistration    | Actions are lightweight when idle. Not a leak concern for realistic app sizes.                    |
+
+## Disclaimer
+
+This project is built with care and follows security best practices, but it is intended for personal / self-hosted use. No guarantees of fitness for production environments. Use at your own risk.
+
+This project was built with AI-assisted tooling using [Claude Opus](https://www.anthropic.com/claude) and [Kiro](https://kiro.dev). The human maintainer defines architecture, supervises implementation, and makes all final decisions.
 
 ## License
 
