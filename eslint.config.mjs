@@ -1,6 +1,6 @@
 // Strict typed-linting config for @cplieger/actions.
 //
-// The shared, fleet-synced ruleset lives in eslint.config.base.mjs (synced from
+// The shared, org-synced ruleset lives in eslint.config.base.mjs (synced from
 // cplieger/ci). Do NOT edit the base here — the next sync would clobber it. This
 // file imports the base and layers the two repo-specific deltas on top:
 //   1. *.mjs handling — the base is vendored as a bare `eslint.config.base.mjs`
