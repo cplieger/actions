@@ -111,8 +111,8 @@ describe("configureApi — prepareHeaders", () => {
       request: () => ({ method: "GET", path: "/me" }),
     });
     await action.dispatch("x");
-    const headers = mockFetch.mock.calls[0]![1].headers as Record<string, string>;
-    expect(headers["authorization"]).toBe("Bearer test-token");
+    const headers = mockFetch.mock.calls[0]![1].headers as Headers;
+    expect(headers.get("authorization")).toBe("Bearer test-token");
   });
 
   it("supports async prepareHeaders", async () => {
@@ -128,8 +128,8 @@ describe("configureApi — prepareHeaders", () => {
       request: () => ({ method: "GET", path: "/x" }),
     });
     await action.dispatch("x");
-    const headers = mockFetch.mock.calls[0]![1].headers as Record<string, string>;
-    expect(headers["x-csrf"]).toBe("async-token");
+    const headers = mockFetch.mock.calls[0]![1].headers as Headers;
+    expect(headers.get("x-csrf")).toBe("async-token");
   });
 
   it("receives the request spec as context", async () => {
@@ -163,10 +163,10 @@ describe("configureApi — prepareHeaders", () => {
       request: () => ({ method: "GET", path: "/x", headers: { "X-Override": "from-spec" } }),
     });
     await action.dispatch("x");
-    const headers = mockFetch.mock.calls[0]![1].headers as Record<string, string>;
-    expect(headers["x-global"]).toBe("global");
+    const headers = mockFetch.mock.calls[0]![1].headers as Headers;
+    expect(headers.get("x-global")).toBe("global");
     // prepareHeaders runs after spec headers, so it overrides
-    expect(headers["x-override"]).toBe("from-global");
+    expect(headers.get("x-override")).toBe("from-global");
   });
 
   it("surfaces an async prepareHeaders rejection as an action error without calling fetch", async () => {
@@ -235,10 +235,10 @@ describe("configureApi — prepareHeaders", () => {
     await action.dispatch("a");
     await action.dispatch("b");
     expect(headersReceived[0]).not.toBe(headersReceived[1]);
-    const h1 = mockFetch.mock.calls[0]![1].headers as Record<string, string>;
-    const h2 = mockFetch.mock.calls[1]![1].headers as Record<string, string>;
-    expect(h1["x-count"]).toBe("1");
-    expect(h2["x-count"]).toBe("2");
+    const h1 = mockFetch.mock.calls[0]![1].headers as Headers;
+    const h2 = mockFetch.mock.calls[1]![1].headers as Headers;
+    expect(h1.get("x-count")).toBe("1");
+    expect(h2.get("x-count")).toBe("2");
   });
 
   it("aborting during an in-flight prepareHeaders records the action as cancelled", async () => {
@@ -366,9 +366,9 @@ describe("configureApi — combined", () => {
     const [url, opts] = mockFetch.mock.calls[0]!;
     expect(url).toBe("https://api.test.io/items");
     expect(opts.credentials).toBe("include");
-    const headers = opts.headers as Record<string, string>;
-    expect(headers["authorization"]).toBe("Bearer combo");
-    expect(headers["content-type"]).toBe("application/json");
+    const headers = opts.headers as Headers;
+    expect(headers.get("authorization")).toBe("Bearer combo");
+    expect(headers.get("content-type")).toBe("application/json");
   });
 });
 
@@ -380,8 +380,8 @@ describe("RequestSpec.headers — per-request headers", () => {
       request: () => ({ method: "GET", path: "/x", headers: { "X-Custom": "val" } }),
     });
     await action.dispatch("x");
-    const headers = mockFetch.mock.calls[0]![1].headers as Record<string, string>;
-    expect(headers["x-custom"]).toBe("val");
+    const headers = mockFetch.mock.calls[0]![1].headers as Headers;
+    expect(headers.get("x-custom")).toBe("val");
   });
 
   it("sends per-request headers on POST alongside Content-Type", async () => {
@@ -396,9 +396,9 @@ describe("RequestSpec.headers — per-request headers", () => {
       }),
     });
     await action.dispatch("x");
-    const headers = mockFetch.mock.calls[0]![1].headers as Record<string, string>;
-    expect(headers["content-type"]).toBe("application/json");
-    expect(headers["x-request-id"]).toBe("abc");
+    const headers = mockFetch.mock.calls[0]![1].headers as Headers;
+    expect(headers.get("content-type")).toBe("application/json");
+    expect(headers.get("x-request-id")).toBe("abc");
   });
 });
 
@@ -420,8 +420,8 @@ describe("configureApi — prepareHeaders returns a Headers object", () => {
       request: () => ({ method: "GET", path: "/x" }),
     });
     await action.dispatch("x");
-    const headers = mockFetch.mock.calls[0]![1].headers as Record<string, string>;
-    expect(headers["authorization"]).toBe("Bearer returned");
-    expect(headers["x-mutated"]).toBeUndefined();
+    const headers = mockFetch.mock.calls[0]![1].headers as Headers;
+    expect(headers.get("authorization")).toBe("Bearer returned");
+    expect(headers.get("x-mutated")).toBeNull();
   });
 });

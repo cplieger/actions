@@ -90,7 +90,7 @@ describe("apiAction", () => {
     const [url, opts] = mockFetch.mock.calls[0]!;
     expect(url).toBe("/api/items");
     expect(opts.method).toBe("POST");
-    expect(opts.headers).toEqual({ "content-type": "application/json" });
+    expect((opts.headers as Headers).get("content-type")).toBe("application/json");
     expect(opts.body).toBe(JSON.stringify({ name: "foo" }));
   });
 });
