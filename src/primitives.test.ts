@@ -33,10 +33,9 @@ describe("idempotencyKey", () => {
     });
     await action.dispatch({ id: "abc" });
     const init = fetchSpy.mock.calls[0]?.[1]!;
-    const headers = init.headers as Record<string, string>;
-    const hk = IDEMPOTENCY_HEADER.toLowerCase();
-    expect(headers[hk]).toBeDefined();
-    expect(headers[hk]!.length).toBeGreaterThan(5);
+    const idemKey = (init.headers as Headers).get(IDEMPOTENCY_HEADER);
+    expect(idemKey).not.toBeNull();
+    expect((idemKey ?? "").length).toBeGreaterThan(5);
     vi.unstubAllGlobals();
   });
 
@@ -51,8 +50,7 @@ describe("idempotencyKey", () => {
     });
     await action.dispatch();
     const init = fetchSpy.mock.calls[0]?.[1]!;
-    const headers = (init.headers ?? {}) as Record<string, string>;
-    expect(headers[IDEMPOTENCY_HEADER.toLowerCase()]).toBeUndefined();
+    expect((init.headers as Headers).get(IDEMPOTENCY_HEADER)).toBeNull();
     vi.unstubAllGlobals();
   });
 
@@ -97,12 +95,11 @@ describe("idempotencyKey", () => {
     await vi.advanceTimersByTimeAsync(100);
     await p;
     expect(fetchSpy).toHaveBeenCalledTimes(3);
-    const k1 = (fetchSpy.mock.calls[0]?.[1])!.headers as Record<string, string>;
-    const k2 = (fetchSpy.mock.calls[1]?.[1])!.headers as Record<string, string>;
-    const k3 = (fetchSpy.mock.calls[2]?.[1])!.headers as Record<string, string>;
-    const hk = IDEMPOTENCY_HEADER.toLowerCase();
-    expect(k1[hk]).toBe(k2[hk]);
-    expect(k2[hk]).toBe(k3[hk]);
+    const k1 = ((fetchSpy.mock.calls[0]?.[1])!.headers as Headers).get(IDEMPOTENCY_HEADER);
+    const k2 = ((fetchSpy.mock.calls[1]?.[1])!.headers as Headers).get(IDEMPOTENCY_HEADER);
+    const k3 = ((fetchSpy.mock.calls[2]?.[1])!.headers as Headers).get(IDEMPOTENCY_HEADER);
+    expect(k1).toBe(k2);
+    expect(k2).toBe(k3);
     vi.unstubAllGlobals();
     vi.useRealTimers();
   });

@@ -39,9 +39,9 @@ describe("apiAction — idempotency key", () => {
     });
     await action.dispatch({ id: "abc" });
     const [, opts] = mockFetch.mock.calls[0]!;
-    const hdrKey = IDEMPOTENCY_HEADER.toLowerCase();
-    expect(opts.headers[hdrKey]).toEqual(expect.any(String));
-    expect(opts.headers[hdrKey].length).toBeGreaterThan(5);
+    const idemKey = (opts.headers as Headers).get(IDEMPOTENCY_HEADER);
+    expect(idemKey).toEqual(expect.any(String));
+    expect((idemKey ?? "").length).toBeGreaterThan(5);
   });
 
   it("does NOT send Idempotency-Key when not configured", async () => {
@@ -53,7 +53,7 @@ describe("apiAction — idempotency key", () => {
     });
     await action.dispatch(undefined);
     const [, opts] = mockFetch.mock.calls[0]!;
-    expect(opts.headers?.[IDEMPOTENCY_HEADER.toLowerCase()]).toBeUndefined();
+    expect((opts.headers as Headers).get(IDEMPOTENCY_HEADER)).toBeNull();
   });
 
   it("idempotencyKey function receives args", async () => {
@@ -66,7 +66,7 @@ describe("apiAction — idempotency key", () => {
     });
     await action.dispatch({ id: "xyz" });
     const [, opts] = mockFetch.mock.calls[0]!;
-    expect(opts.headers[IDEMPOTENCY_HEADER.toLowerCase()]).toBe("custom-xyz");
+    expect((opts.headers as Headers).get(IDEMPOTENCY_HEADER)).toBe("custom-xyz");
   });
 });
 
@@ -124,7 +124,7 @@ describe("apiAction — response edge cases", () => {
     await action.dispatch(undefined);
     const [, opts] = mockFetch.mock.calls[0]!;
     expect(opts.body).toBeUndefined();
-    expect(opts.headers?.["Content-Type"]).toBeUndefined();
+    expect((opts.headers as Headers).get("Content-Type")).toBeNull();
   });
 });
 
