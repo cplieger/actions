@@ -50,8 +50,8 @@ Install dev dependencies, then run the checks (scripts are in `package.json`):
 
 ```sh
 npm install
-npm run typecheck         # tsgo -project tsconfig.json (source)
-npm run typecheck:tests   # tsgo -project tsconfig.test.json (incl. tests)
+npm run typecheck         # tsc -project tsconfig.json (source)
+npm run typecheck:tests   # tsc -project tsconfig.test.json (incl. tests)
 npm test                  # vitest --run
 npx eslint .              # strict typed lint (eslint.config.mjs)
 ```

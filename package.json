@@ -8,8 +8,8 @@
     "./testing": "./src/testing.ts"
   },
   "scripts": {
-    "typecheck": "tsgo -project tsconfig.json",
-    "typecheck:tests": "tsgo -project tsconfig.test.json",
+    "typecheck": "tsc -project tsconfig.json",
+    "typecheck:tests": "tsc -project tsconfig.test.json",
     "test": "vitest --run"
   },
   "dependencies": {
@@ -19,11 +19,13 @@
   "devDependencies": {
     "@eslint/js": "10.0.1",
     "@types/node": "24.13.2",
+    "@typescript/native": "npm:typescript@7.0.2",
     "@vitest/coverage-v8": "4.1.10",
     "eslint": "10.6.0",
     "fast-check": "4.8.0",
     "happy-dom": "20.10.6",
     "prettier": "3.9.4",
+    "typescript": "npm:@typescript/typescript6@6.0.2",
     "typescript-eslint": "8.63.0",
     "vitest": "4.1.10"
   },
