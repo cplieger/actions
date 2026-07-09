@@ -24,7 +24,7 @@
     "fast-check": "4.8.0",
     "happy-dom": "20.10.6",
     "prettier": "3.9.4",
-    "typescript-eslint": "8.62.1",
+    "typescript-eslint": "8.63.0",
     "vitest": "4.1.10"
   },
   "description": "Declarative async UI-action framework for TypeScript",
