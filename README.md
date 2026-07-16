@@ -116,9 +116,9 @@ const action = apiAction({
 - `retryNetwork` — preset retry classifier for transient failures
 - `classifyFetchError(err)` — classify fetch errors (network vs timeout vs HTTP)
 - `hasErrorString(err)` — type guard for objects with a `.message` string
-- `withTimeout(signal, ms)` — compose an AbortSignal with a timeout
-- `API_TIMEOUT_MS` — default API request timeout (30 000 ms)
 - `RETRY_STANDARD` — standard retry config (2 retries, 300ms)
+
+> `withTimeout(signal, ms)` and `API_TIMEOUT_MS` moved to [`@cplieger/fetch`](https://github.com/cplieger/fetch) (the layer that owns timeout composition); import them from there.
 
 ### Test utilities (`@cplieger/actions/testing`)
 
