@@ -1,9 +1,9 @@
 // apiAction: factory for HTTP-backed actions. The run() implementation is just
 // a request descriptor (RequestSpec); the request/response envelope is owned by
-// @cplieger/fetch. actions holds its OWN isolated fetch instance (createFetch)
-// so configureApi() never collides with a consuming app's global configureFetch,
-// then maps fetch's ApiResult envelope onto ActionError so callers see the
-// identical typed errors they always have.
+// @cplieger/fetch. actions holds its OWN fetch instance (createFetch) — fully
+// isolated from any instance a consuming app builds (fetch v2 is
+// instances-only) — and maps fetch's ApiResult envelope onto ActionError so
+// callers see the identical typed errors they always have.
 // ---------------------------------------------------------------------------
 
 import { API_TIMEOUT_MS, createFetch } from "@cplieger/fetch";
