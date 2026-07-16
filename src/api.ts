@@ -6,30 +6,12 @@
 // identical typed errors they always have.
 // ---------------------------------------------------------------------------
 
-import { createFetch } from "@cplieger/fetch";
+import { API_TIMEOUT_MS, createFetch } from "@cplieger/fetch";
 import type { ApiErr, FetchConfig, FetchInstance, RequestOptions } from "@cplieger/fetch";
 
 import { defineAction, IDEMPOTENCY_HEADER } from "./define.js";
 import { ActionError } from "./error.js";
 import type { Action, ActionContext, ActionDefinition, RequestSpec } from "./types.js";
-
-/** Default request timeout in milliseconds. */
-export const API_TIMEOUT_MS = 30_000;
-
-/**
- * Compose an optional caller signal with a fresh timeout signal.
- * If the caller provides an existing signal, the result aborts when
- * either the caller signal or the timeout fires — whichever comes first.
- *
- * @param signal - Existing signal to compose with (may be undefined).
- * @param ms - Timeout in milliseconds.
- * @returns A composed AbortSignal.
- */
-export function withTimeout(signal: AbortSignal | undefined, ms: number): AbortSignal {
-  return signal !== undefined
-    ? AbortSignal.any([signal, AbortSignal.timeout(ms)])
-    : AbortSignal.timeout(ms);
-}
 
 const JSON_CT = "application/json";
 
@@ -57,14 +39,15 @@ export interface ApiConfig {
   readonly fetchFn?: typeof fetch;
 }
 
-// actions owns a PRIVATE, isolated @cplieger/fetch instance rather than the
-// library's module-global configureFetch: a consuming app (subflux/vibekit) may
-// call configureFetch() for its own direct fetch usage, and actions must never
-// read or clobber that shared default. baseUrl / credentials / fetchFn are
-// projected onto this instance. prepareHeaders stays here (not on the instance)
-// because actions' hook is spec-aware — `(headers, { spec })` — a shape fetch's
-// `(headers)`-only hook can't express, so executeRequest runs it itself and
-// passes the result as the per-request headers.
+// actions owns a PRIVATE @cplieger/fetch instance. fetch v2 is instances-only
+// with config frozen at construction, so isolation from the consuming app's
+// own fetch instances is inherent — and configureApi's replace semantics are
+// implemented the only way v2 allows: by rebuilding the instance. baseUrl /
+// credentials / fetchFn are projected onto this instance. prepareHeaders stays
+// here (not on the instance) because actions' hook is spec-aware —
+// `(headers, { spec })` — a shape fetch's `(headers)`-only hook can't express,
+// so executeRequest runs it itself and passes the result as the per-request
+// headers.
 let apiFetch: FetchInstance = createFetch();
 let apiPrepareHeaders: ApiConfig["prepareHeaders"];
 
@@ -94,8 +77,8 @@ export function configureApi(config: ApiConfig): void {
   if (config.fetchFn !== undefined) {
     fetchConfig.fetchFn = config.fetchFn;
   }
-  // Rebuild the instance so this call REPLACES the previous config (a bare
-  // instance.configure() would shallow-merge/accumulate instead).
+  // Rebuild the instance: fetch v2 instances are immutable, and configureApi's
+  // contract is replace-not-merge, which a fresh instance implements exactly.
   apiFetch = createFetch(fetchConfig);
   apiPrepareHeaders = config.prepareHeaders;
 }

@@ -11,7 +11,7 @@ export type { TransportSendResult, TransportCommand, TransportSendFn } from "./t
 
 // Action factories
 export { defineAction } from "./define.js";
-export { apiAction, configureApi, API_TIMEOUT_MS, withTimeout } from "./api.js";
+export { apiAction, configureApi } from "./api.js";
 export type { ApiConfig, ApiActionDefinition } from "./api.js";
 
 // Error class + utilities
