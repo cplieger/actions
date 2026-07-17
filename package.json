@@ -14,7 +14,7 @@
   },
   "dependencies": {
     "@cplieger/fetch": "2.0.0",
-    "@cplieger/reactive": "1.2.4"
+    "@cplieger/reactive": "1.2.5"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
