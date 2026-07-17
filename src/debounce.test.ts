@@ -118,4 +118,26 @@ describe("debouncedDispatch — leading", () => {
     vi.advanceTimersByTime(200);
     expect(run).toHaveBeenCalledTimes(1);
   });
+
+  it("isPending() is false during the cooldown window when nothing is scheduled", () => {
+    const { action } = makeAction();
+    const debounced = debouncedDispatch(action, { wait: 100, leading: true });
+    debounced("a");
+    // Leading edge fired; the window is pure cooldown — nothing scheduled.
+    expect(debounced.isPending()).toBe(false);
+    vi.advanceTimersByTime(100);
+    expect(debounced.isPending()).toBe(false);
+  });
+
+  it("isPending() is true only while a suppressed call waits for the trailing fire", () => {
+    const { action } = makeAction();
+    const debounced = debouncedDispatch(action, { wait: 100, leading: true });
+    debounced("a");
+    expect(debounced.isPending()).toBe(false);
+    debounced("b");
+    expect(debounced.isPending()).toBe(true);
+    vi.advanceTimersByTime(100);
+    // "b" fired at the trailing edge; the re-armed window is cooldown only.
+    expect(debounced.isPending()).toBe(false);
+  });
 });
