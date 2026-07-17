@@ -61,9 +61,13 @@ describe("registry pending-accounting property", () => {
           expect(isPending(nm)).toBe(expected > 0);
         }
 
-        // Snapshot invariants: no null/undefined slots, one entry per id
-        // (latest state), and first-record order preserved across the
-        // recomposed inflight + settled view.
+        // Snapshot invariants: exactly one entry per RECORDED id (the
+        // generator stays far below every eviction threshold, so the view is
+        // the complete id set — a cardinality oracle that fails on silently
+        // dropped entries), each carrying its latest status, in first-record
+        // order across the recomposed inflight + settled view.
+        const log = recentLog();
+        expect(log).toHaveLength(lastStatus.size);
         const seen = new Set<string>();
         const firstRecordRank = new Map<string, number>();
         let rank = 0;
@@ -74,7 +78,7 @@ describe("registry pending-accounting property", () => {
           }
         }
         let prevRank = -1;
-        for (const entry of recentLog()) {
+        for (const entry of log) {
           expect(entry).not.toBeNull();
           expect(entry).not.toBeUndefined();
           expect(seen.has(entry.id)).toBe(false);
@@ -84,6 +88,8 @@ describe("registry pending-accounting property", () => {
           expect(r).toBeGreaterThan(prevRank);
           prevRank = r;
         }
+        // Exact id-set equality, not just subset-with-properties.
+        expect(seen).toEqual(new Set(lastStatus.keys()));
       }),
       { numRuns: 300 },
     );

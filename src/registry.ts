@@ -19,8 +19,12 @@
 //
 // Transition table for record(instance). The caller contract
 // (define.ts) records one pending then at most one terminal per
-// dispatch id, but every cell is defined so no input can desync the
-// accounting:
+// dispatch id, and an id's `name` never changes across records (ids
+// embed their action name). Every cell is still defined so an
+// out-of-contract input degrades to sane accounting rather than a
+// desync; reentrant records from synchronous signal effects land on
+// coherent state because each transition completes its map moves
+// before publishing signals:
 //
 //   status   | id in inflight       | id in settled          | id unknown
 //   ---------|----------------------|------------------------|--------------------
@@ -112,10 +116,12 @@ function unindexPending(name: string, id: string): void {
  *  the same victim the old array shape's oldest-position-first scan picked.
  *  Map insertion order alone is settle order, not first-record order (a
  *  long-pending dispatch settles late), hence the ≤ (MAX_LOG_SIZE + 1)-entry
- *  scan. `protectId` shields the entry being recorded right now, matching
- *  the old shape's `entry.id !== instance.id` eviction guard: a long-lived
- *  pending that finally settles carries the lowest seq of the whole log and
- *  would otherwise evict itself the instant it completed. */
+ *  scan. `protectId` shields the entry being recorded right now — load-
+ *  bearing on the pending → terminal path (a long-lived pending that finally
+ *  settles carries the lowest seq of the whole log and would otherwise evict
+ *  itself the instant it completed; the old shape's own-id guard covered
+ *  this). On the terminal-only path it is belt-and-braces: a fresh seq is
+ *  never the lowest among older entries. */
 function evictOldestSettled(protectId: string): void {
   while (settled.size > MAX_LOG_SIZE) {
     let oldestKey: string | undefined;
@@ -133,19 +139,21 @@ function evictOldestSettled(protectId: string): void {
   }
 }
 
-/** Reclaim the oldest in-flight entry once the table exceeds MAX_INFLIGHT.
- *  A dispatch that never settles is a lifecycle bug in the defining layer;
- *  the old shape reclaimed it silently at its hard tier — this names it.
- *  The reclaimed entry is dropped outright (not moved to `settled`: its
- *  status is still "pending", and the terminal log must not lie). */
-function reclaimLeakedPending(): void {
+/** Reclaim the oldest in-flight entry once the table exceeds MAX_INFLIGHT,
+ *  skipping `protectId` (the entry being recorded right now must not reclaim
+ *  itself — a revived entry keeps its original, possibly-lowest seq). The
+ *  reclaimed entry is dropped outright (not moved to `settled`: its status is
+ *  still "pending", and the terminal log must not lie). Runs on every path
+ *  that grows the table: unknown-pending insert AND terminal → pending
+ *  revival. */
+function reclaimLeakedPending(protectId: string): void {
   if (inflight.size <= MAX_INFLIGHT) {
     return;
   }
   let oldestKey: string | undefined;
   let oldestSeq = Infinity;
   for (const [key, entry] of inflight) {
-    if (entry.seq < oldestSeq) {
+    if (key !== protectId && entry.seq < oldestSeq) {
       oldestSeq = entry.seq;
       oldestKey = key;
     }
@@ -158,7 +166,7 @@ function reclaimLeakedPending(): void {
   if (entry !== undefined) {
     unindexPending(entry.instance.name, oldestKey);
     console.warn(
-      `[actions] in-flight table exceeded ${String(MAX_INFLIGHT)} entries — reclaiming oldest pending "${entry.instance.name}" (${oldestKey}). A dispatch that never settles is a bug in its action's lifecycle.`,
+      `[actions] in-flight capacity exceeded (${String(MAX_INFLIGHT)} entries) — reclaiming oldest pending "${entry.instance.name}" (${oldestKey}). Check for dispatches that never settle.`,
     );
   }
 }
@@ -175,17 +183,19 @@ export function record(instance: ActionInstance): void {
       const done = settled.get(id);
       if (done !== undefined) {
         // Terminal → pending re-record. Not produced by define.ts (one
-        // pending, then at most one terminal per id); defined anyway so no
-        // input desyncs the accounting: move back, keep the original seq.
+        // pending, then at most one terminal per id); defined anyway: move
+        // back, keep the original seq. Grows the table, so the watchdog
+        // runs here too (protecting the revived id itself).
         settled.delete(id);
         done.instance = instance;
         inflight.set(id, done);
         indexPending(instance.name, id);
+        reclaimLeakedPending(id);
       } else {
         seqCounter += 1;
         inflight.set(id, { instance, seq: seqCounter });
         indexPending(instance.name, id);
-        reclaimLeakedPending();
+        reclaimLeakedPending(id);
       }
     }
   } else {
@@ -193,12 +203,19 @@ export function record(instance: ActionInstance): void {
     if (inf !== undefined) {
       // The common transition: pending → terminal. Membership moves between
       // the tables; the accounting decrements because the id LEFT inflight,
-      // not because a counter was paired correctly.
+      // not because a counter was paired correctly. Order matters: the
+      // entry is FULLY moved (settled + evicted) before unindexPending
+      // publishes signals, because reactive effects flush synchronously at
+      // that batch's end — an observer reading getActionLog()/pendingCount
+      // there must see the entry as terminal, never absent, and a reentrant
+      // same-id record from an effect must find it in `settled` (the revive
+      // cell) rather than minting a duplicate wrapper.
+      const indexedName = inf.instance.name;
       inflight.delete(id);
-      unindexPending(inf.instance.name, id);
       inf.instance = instance;
       settled.set(id, inf);
       evictOldestSettled(id);
+      unindexPending(indexedName, id);
     } else {
       const done = settled.get(id);
       if (done !== undefined) {
@@ -264,10 +281,12 @@ export function recentLog(): readonly ActionInstance[] {
 /** Read the recent action log. Useful for devtools integration and
  *  debugging panels. Returns a snapshot of all live entries.
  *
- *  SECURITY/PRIVACY: each entry retains the full dispatch `args` in memory (up to
- *  MAX_LOG_SIZE entries), `subscribeToActions` fans `args` out to every listener, and
- *  buildRetryButton retains a structuredClone of `args` in the error-notification
- *  retry closure. Do NOT put secrets, tokens, or PII in action args. */
+ *  SECURITY/PRIVACY: each entry retains the full dispatch `args` in memory (up
+ *  to MAX_LOG_SIZE settled entries plus every in-flight dispatch, watchdog-
+ *  bounded at MAX_INFLIGHT), `subscribeToActions` fans `args` out to every
+ *  listener, and buildRetryButton retains a structuredClone of `args` in the
+ *  error-notification retry closure. Do NOT put secrets, tokens, or PII in
+ *  action args. */
 export const getActionLog = recentLog;
 
 /** O(1) check: true if at least one instance of the named action is pending.
