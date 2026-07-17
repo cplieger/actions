@@ -6,13 +6,19 @@ export { configure } from "./notifier.js";
 export type { Notifier, NotifierRetry } from "./notifier.js";
 
 // Transport injection
-export { configureTransport, transportAction } from "./transport.js";
+export { configureTransport, transportAction, IDEMPOTENCY_COMMAND_FIELD } from "./transport.js";
 export type { TransportSendResult, TransportCommand, TransportSendFn } from "./transport.js";
 
 // Action factories
-export { defineAction } from "./define.js";
+export { defineAction, IDEMPOTENCY_HEADER } from "./define.js";
 export { apiAction, configureApi } from "./api.js";
-export type { ApiConfig, ApiActionDefinition } from "./api.js";
+export type {
+  ApiConfig,
+  ApiActionDefinition,
+  ApiDecodeContext,
+  ApiErrorInfo,
+  ApiErrorDecision,
+} from "./api.js";
 
 // Error class + utilities
 export { ActionError, hasErrorString, classifyFetchError, retryNetwork } from "./error.js";
@@ -56,6 +62,7 @@ export type {
   ActionErrorLike,
   ActionInstance,
   ActionLifecycleStatus,
+  ActionOutcome,
   DispatchHandle,
   DispatchOptions,
   NotificationSpec,

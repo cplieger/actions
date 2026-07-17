@@ -157,6 +157,16 @@ export interface Action<TArgs, TResult> {
   cancel(): void;
 }
 
+/** Typed terminal outcome of a single dispatch, resolved by
+ *  {@link DispatchHandle.outcome}. Distinguishes the three states the
+ *  handle's own `TResult | null` resolution collapses: success (including a
+ *  legitimate `null` / `undefined` result), failure (carrying the normalized
+ *  error), and cancellation. */
+export type ActionOutcome<TResult> =
+  | { readonly status: "success"; readonly value: TResult; readonly attempts?: number }
+  | { readonly status: "error"; readonly error: ActionErrorLike; readonly attempts?: number }
+  | { readonly status: "cancelled" };
+
 /** Handle returned by dispatch(). An augmented Promise with an abort()
  *  method for per-dispatch cancellation (mirrors RTK createAsyncThunk).
  *  Can be awaited directly as a Promise. */
@@ -164,6 +174,12 @@ export interface DispatchHandle<TResult> extends Promise<TResult | null> {
   /** Abort this specific dispatch. Other in-flight dispatches of the
    *  same action are unaffected. Mirrors RTK's promise.abort(). */
   abort(): void;
+  /** Opt-in typed terminal outcome. Resolves alongside the handle (it never
+   *  rejects) with a discriminated {@link ActionOutcome}, letting a caller
+   *  distinguish a legitimate `null` result from failure or cancellation
+   *  without wiring callbacks. The never-rejecting `TResult | null`
+   *  resolution and the callback tiers remain the canonical surface. */
+  readonly outcome: Promise<ActionOutcome<TResult>>;
 }
 
 /** Per-dispatch overrides. */

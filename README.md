@@ -49,7 +49,7 @@ await deleteItem.dispatch(itemId);
 
 The framework provides three adapter injection points:
 
-- **Notifier** (`configure()`): Provides `success(msg)` and `error(msg, retry?)` methods for displaying notifications. Without configuration, notifications are silently dropped.
+- **Notifier** (`configure()`): Provides `success(msg)` and `error(msg, retry?)` methods for displaying notifications. Without configuration, notifications are dropped — and the framework warns once on the first drop, since a forgotten `configure()` call is otherwise invisible. Call `configure({})` to opt into intentional headless silence (tests, non-UI environments); an explicitly configured notifier never warns, even with missing methods.
 
 - **API** (`configureApi()`): Configures the HTTP layer used by all `apiAction` instances — base URL, auth/CSRF headers, credentials mode, or a custom fetch implementation. Without configuration, `apiAction` uses the global `fetch` with relative paths.
 
@@ -93,17 +93,68 @@ const action = apiAction({
 });
 ```
 
+### Response decoding (apiAction `decode` / `decodeError`)
+
+By default `apiAction` treats any 2xx as success and any failure as an
+`ActionError`. Two optional hooks own the interpretation for servers that
+speak nonstandard envelopes:
+
+`decode(data, { status, spec })` runs on every 2xx. Return the action result,
+or **throw** to route the dispatch to the error branch (rollback + error
+notification + registry error status) — the seam for 200-with-error envelopes:
+
+```typescript
+const stage = apiAction<{ repo: string }, { output?: string }>({
+  name: "git.stage",
+  request: (args) => ({ method: "POST", path: "/api/git/stage", body: args }),
+  // The server replies HTTP 200 for both outcomes; a non-empty `error`
+  // field is the failure signal.
+  decode: (data) => {
+    if (hasErrorString(data) && data.error !== "") {
+      throw new ActionError(data.error, { code: "git" });
+    }
+    return data as { output?: string };
+  },
+});
+```
+
+`decodeError(info, { spec })` runs on every failure that produced a real HTTP
+response. `info` carries `status`, `message`, `code?`, the parsed JSON
+`body?`, and `headers?`. Return `{ kind: "success", value }` to resolve the
+dispatch as success (a 409 whose body is a meaningful payload), `{ kind:
+"error", error }` to replace the default error, or `undefined` to keep the
+default mapping:
+
+```typescript
+const deleteTool = apiAction<{ name: string }, DeleteToolResult>({
+  name: "tools.delete",
+  request: ({ name }) => ({ method: "DELETE", path: `/api/tools/${name}` }),
+  error: false, // 409 cascade is a normal flow, handled by the caller
+  decodeError: (info) =>
+    info.status === 409
+      ? { kind: "success", value: (info.body ?? {}) as DeleteToolResult }
+      : undefined,
+});
+```
+
+Transport-level failures (network / timeout / cancellation — `status` 0)
+never reach `decodeError`, so `retryNetwork` classification and cancellation
+semantics can't be accidentally rewritten. `info.body` is server-controlled
+input: validate its shape before reading fields. `run()` on a plain
+`defineAction` remains the universal escape hatch for wire contracts beyond
+both hooks (e.g. non-JSON request bodies).
+
 ## API
 
 - `configure(notifier)` — inject the notification adapter
 - `configureApi(opts)` — configure the HTTP layer (baseUrl, headers, credentials, fetchFn)
 - `configureTransport(fn)` — inject the streaming transport adapter
-- `defineAction(def)` — create an action from a declarative definition
-- `apiAction(def)` — create an HTTP-backed action (uses `fetch`)
+- `defineAction(def)` — create an action from a declarative definition. Action names should be unique: a duplicate name gets a one-time console warning, since the registry log and the name-keyed helpers (`isPending`, `subscribeByName`, `bindLoadingState`) conflate same-named definitions
+- `apiAction(def)` — create an HTTP-backed action (uses `fetch`); optional `decode` / `decodeError` hooks own nonstandard-envelope interpretation (see above)
 - `transportAction(def)` — create a transport/SSE-backed action
 - `debouncedDispatch(action, opts)` — debounce wrapper
 - `pollAction(action, args, opts)` — interval polling with pause/backoff
-- `bindLoadingState(name, el, opts?)` — bind an element's disabled/aria-busy state to action pending; a reactive effect over the pending signals
+- `bindLoadingState(name, el, opts?)` — bind an element's disabled/aria-busy state to action pending; a reactive effect over the pending signals. The binding auto-disposes when the element leaves the DOM — an element re-attached later (e.g. a list re-render reusing nodes) is no longer bound and needs a fresh `bindLoadingState` call
 - `pollUntil(step, opts)` — poll until a terminal condition (wait-then-poll, `until` predicate, `maxAttempts`/`timeoutMs` budgets, backoff-on-transient); returns `{status:'done'|'timeout'|'aborted'}`. A standalone sibling to `pollAction` for one-shot terminal-state waits.
 - `withAsyncFeedback(btn, fn, opts?)` — per-button async feedback (spinner → ✓/✗ → restore) with a re-entry guard + sr-only announce + injectable glyphs. `target?: HTMLElement` runs the cycle on a child slot via in-place element replacement (siblings/label untouched); `resetMs: 0` persists the outcome glyph (no auto-revert).
 - `subscribeToActions(fn)` — subscribe to all lifecycle events (discrete event stream)
@@ -117,6 +168,8 @@ const action = apiAction({
 - `classifyFetchError(err)` — classify fetch errors (network vs timeout vs HTTP)
 - `hasErrorString(err)` — type guard for objects with a `.message` string
 - `RETRY_STANDARD` — standard retry config (2 retries, 300ms)
+- `IDEMPOTENCY_HEADER` — the `Idempotency-Key` HTTP header name `apiAction` sets from `ctx.idempotencyKey`; import it in custom `run()` implementations instead of hand-copying the literal
+- `IDEMPOTENCY_COMMAND_FIELD` — the `idempotency_key` command field `transportAction` injects; same sharing purpose for custom transport runners
 
 > `withTimeout(signal, ms)` and `API_TIMEOUT_MS` moved to [`@cplieger/fetch`](https://github.com/cplieger/fetch) (the layer that owns timeout composition); import them from there.
 
@@ -167,6 +220,35 @@ handle.abort();
 const result = await handle;
 ```
 
+### Typed outcome accessor (`handle.outcome`)
+
+The handle's own resolution is deliberately never-rejecting `TResult | null`,
+which collapses three terminal states — and makes a legitimately-`null`
+result indistinguishable from failure. `handle.outcome` is the opt-in typed
+accessor for callers that need the distinction:
+
+```typescript
+const handle = action.dispatch(args);
+const outcome = await handle.outcome; // never rejects
+switch (outcome.status) {
+  case "success":
+    use(outcome.value); // TResult — including a legitimate null
+    break;
+  case "error":
+    show(outcome.error.message); // the normalized ActionErrorLike
+    break;
+  case "cancelled":
+    break; // abort() / action.cancel() / timeout-as-abort
+}
+```
+
+`outcome.attempts` carries the run count when the dispatch actually ran
+(retries increment it); a dedupe-joined dispatch resolves with the shared
+result but no attempts. The never-rejecting promise and the callback tiers
+(`onSuccess`/`onError`/`onSettled`) remain the canonical surface — reach for
+`.outcome` when a call site consumes the terminal state inline instead of
+wiring callbacks.
+
 ### Timeout option
 
 `ActionDefinition` accepts a `timeout` (ms) that aborts `run()` via `AbortSignal.timeout()`:
@@ -193,7 +275,6 @@ The following features are intentionally not implemented:
 | Debounce `maxWait`                     | Deliberate simplification. Use `flush()` for guaranteed-fire semantics.                           |
 | Throttle helper                        | Not action-specific. Consumers can throttle before calling `dispatch()`.                          |
 | `condition` / pre-execution guard      | Trivially implemented by callers with `if`. `dedupe` covers the primary use case.                 |
-| Typed discriminated-union result       | The callback model (onSuccess/onError/onSettled) is the chosen API shape.                         |
 | `onProgress` callback                  | Transport-specific. Consumers wire progress in their `run()` implementation.                      |
 | Batch dispatch                         | Store-level concern. This library doesn't own a store.                                            |
 | `dispose()` / action deregistration    | Actions are lightweight when idle. Not a leak concern for realistic app sizes.                    |
