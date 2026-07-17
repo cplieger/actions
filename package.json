@@ -13,8 +13,13 @@
     "test": "vitest --run"
   },
   "dependencies": {
-    "@cplieger/fetch": "2.0.0",
+    "@cplieger/fetch": "2.1.0",
     "@cplieger/reactive": "1.2.5"
+  },
+  "overrides": {
+    "typed-rest-client": {
+      "qs": "6.15.3"
+    }
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
