@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
-// Targeted tests for registry.ts: tombstone eviction, Set-based listener
-// iteration, pendingCount/recentLog correctness, _resetForTest.
+// Targeted tests for registry.ts: bounded settled retention, in-flight
+// protection, Set-based listener iteration, pendingCount/recentLog
+// correctness, the transition-table edges, the leak watchdog, _resetForTest.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   record,
@@ -10,8 +11,6 @@ import {
   pendingCount,
   isPending,
   _resetForTest,
-  _setThrowOnInvariantViolationForTest,
-  _forcePendingUnderflowForTest,
 } from "./registry.js";
 import type { ActionInstance } from "./types.js";
 
@@ -31,7 +30,7 @@ beforeEach(() => {
   _resetForTest();
 });
 
-describe("tombstone eviction", () => {
+describe("bounded eviction", () => {
   it("evicts oldest non-pending entry when log exceeds MAX_LOG_SIZE (200)", () => {
     for (let i = 0; i < 200; i++) {
       record(makeInstance({ id: `a-${i}`, status: "success" }));
@@ -50,7 +49,8 @@ describe("tombstone eviction", () => {
     expect(pendingCount()).toBe(201);
   });
 
-  it("hard cap (1000) force-evicts pending entries and decrements pendingCount", () => {
+  it("in-flight watchdog (1000) force-evicts pending entries and decrements pendingCount", () => {
+    const consoleSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     for (let i = 0; i < 1000; i++) {
       record(makeInstance({ id: `h-${i}`, status: "pending" }));
     }
@@ -58,9 +58,10 @@ describe("tombstone eviction", () => {
     record(makeInstance({ id: "hard-overflow", status: "pending" }));
     expect(pendingCount()).toBe(1000);
     expect(recentLog()).toHaveLength(1000);
+    consoleSpy.mockRestore();
   });
 
-  it("compaction splices leading nulls when head > 256", () => {
+  it("heavy settled churn keeps the log bounded with no gaps", () => {
     for (let i = 0; i < 260; i++) {
       record(makeInstance({ id: `c-${i}`, status: "success" }));
     }
@@ -263,7 +264,8 @@ describe("pendingByName index", () => {
     expect(pendingCount()).toBe(1);
   });
 
-  it("hard-cap eviction removes from pendingByName", () => {
+  it("watchdog eviction removes from pendingByName", () => {
+    const consoleSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     for (let i = 0; i < 1000; i++) {
       record(makeInstance({ id: `hc-${i}`, name: "bulk.op", status: "pending" }));
     }
@@ -272,6 +274,7 @@ describe("pendingByName index", () => {
     expect(pendingCount()).toBe(1000);
     const pending = recentLog().filter((i) => i.status === "pending" && i.name === "bulk.op");
     expect(pending.find((e) => e.id === "hc-0")).toBeUndefined();
+    consoleSpy.mockRestore();
   });
 
   it("_resetForTest clears pendingByName", () => {
@@ -285,42 +288,98 @@ describe("pendingByName index", () => {
   });
 });
 
-describe("_pendingTotal invariant clamp", () => {
-  it("production default (flag off) warns + clamps to 0, does not throw", () => {
-    const consoleSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-    // Simulate an add/remove mismatch: an unpaired removePending drives the
-    // total negative. The next record() reaches the clamp branch.
-    _forcePendingUnderflowForTest();
-    expect(() => record(makeInstance({ id: "clamp-1", status: "success" }))).not.toThrow();
-    expect(consoleSpy).toHaveBeenCalledWith(
-      "[actions] _pendingTotal went negative — invariant violation; clamping to 0",
-    );
-    // Clamped back to a sane value (no negative leak into pendingCount).
+// The _pendingTotal invariant-clamp tests were deleted with the clamp: the
+// pending total is now `inflight.size` (membership), so the negative-total
+// state those tests exercised is unrepresentable.
+
+describe("split-shape transition table", () => {
+  it("retains the newest 200 terminals, evicting first-record order first", () => {
+    for (let i = 0; i < 250; i++) {
+      record(makeInstance({ id: `t-${String(i)}`, status: "success" }));
+    }
+    const log = recentLog();
+    expect(log).toHaveLength(200);
+    expect(log[0]?.id).toBe("t-50");
+    expect(log[199]?.id).toBe("t-249");
+  });
+
+  it("a long-lived pending survives hundreds of settled records and still settles", () => {
+    record(makeInstance({ id: "long", name: "slow.op", status: "pending" }));
+    for (let i = 0; i < 300; i++) {
+      record(makeInstance({ id: `churn-${String(i)}`, status: "success" }));
+    }
+    expect(isPending("slow.op")).toBe(true);
+    const stillThere = recentLog().find((e) => e.id === "long");
+    expect(stillThere?.status).toBe("pending");
+    // First-record order: the oldest entry in the view is the pending one.
+    expect(recentLog()[0]?.id).toBe("long");
+
+    record(makeInstance({ id: "long", name: "slow.op", status: "success" }));
+    expect(isPending("slow.op")).toBe(false);
     expect(pendingCount()).toBe(0);
-    consoleSpy.mockRestore();
+    const settledNow = recentLog().find((e) => e.id === "long");
+    expect(settledNow?.status).toBe("success");
   });
 
-  it("test flag on: a negative _pendingTotal throws instead of being masked", () => {
-    const consoleSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-    _setThrowOnInvariantViolationForTest(true);
-    // Same deliberate add/remove mismatch as above.
-    _forcePendingUnderflowForTest();
-    expect(() => record(makeInstance({ id: "throw-1", status: "success" }))).toThrow(
-      "[actions] _pendingTotal went negative — invariant violation",
-    );
-    // It threw at the clamp, before the warn + clamp ran.
-    expect(consoleSpy).not.toHaveBeenCalled();
-    consoleSpy.mockRestore();
+  it("pending re-record overwrites in place without double-counting", () => {
+    record(makeInstance({ id: "rr", name: "x.y", status: "pending" }));
+    record(makeInstance({ id: "rr", name: "x.y", status: "pending", attempts: 2 }));
+    expect(pendingCount()).toBe(1);
+    const entries = recentLog().filter((e) => e.id === "rr");
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.attempts).toBe(2);
   });
 
-  it("_resetForTest restores the production default (flag off)", () => {
+  it("double-terminal record keeps one latest-per-id entry", () => {
+    record(makeInstance({ id: "dt", status: "error" }));
+    record(makeInstance({ id: "dt", status: "cancelled" }));
+    const entries = recentLog().filter((e) => e.id === "dt");
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.status).toBe("cancelled");
+    expect(pendingCount()).toBe(0);
+  });
+
+  it("terminal-only record (no prior pending) lands in the log", () => {
+    record(makeInstance({ id: "term-only", status: "cancelled" }));
+    expect(recentLog().find((e) => e.id === "term-only")?.status).toBe("cancelled");
+    expect(pendingCount()).toBe(0);
+  });
+
+  it("terminal → pending re-record moves the entry back and re-indexes it", () => {
+    record(makeInstance({ id: "revive", name: "z.op", status: "pending" }));
+    record(makeInstance({ id: "revive", name: "z.op", status: "error" }));
+    expect(isPending("z.op")).toBe(false);
+    // Not produced by define.ts; the transition table defines it anyway.
+    record(makeInstance({ id: "revive", name: "z.op", status: "pending" }));
+    expect(isPending("z.op")).toBe(true);
+    expect(pendingCount()).toBe(1);
+    const entries = recentLog().filter((e) => e.id === "revive");
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.status).toBe("pending");
+  });
+
+  it("keeps first-record order across interleaved pending and terminal records", () => {
+    record(makeInstance({ id: "o-1", name: "a", status: "pending" }));
+    record(makeInstance({ id: "o-2", name: "b", status: "success" }));
+    record(makeInstance({ id: "o-3", name: "c", status: "pending" }));
+    // o-1 settles AFTER o-3 was first recorded; its view position must not move.
+    record(makeInstance({ id: "o-1", name: "a", status: "success" }));
+    expect(recentLog().map((e) => e.id)).toEqual(["o-1", "o-2", "o-3"]);
+  });
+});
+
+describe("in-flight leak watchdog", () => {
+  it("reclaims the oldest pending past the threshold with a warn and corrected counts", () => {
     const consoleSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-    _setThrowOnInvariantViolationForTest(true);
-    _resetForTest();
-    // After reset the flag is back to false: warn + clamp, no throw.
-    _forcePendingUnderflowForTest();
-    expect(() => record(makeInstance({ id: "reset-1", status: "success" }))).not.toThrow();
-    expect(consoleSpy).toHaveBeenCalled();
+    for (let i = 0; i <= 1000; i++) {
+      record(makeInstance({ id: `leak-${String(i)}`, name: "leaky.op", status: "pending" }));
+    }
+    expect(consoleSpy).toHaveBeenCalledTimes(1);
+    expect(consoleSpy.mock.calls[0]?.[0]).toContain("leaky.op");
+    expect(consoleSpy.mock.calls[0]?.[0]).toContain("leak-0");
+    expect(pendingCount()).toBe(1000);
+    expect(isPending("leaky.op")).toBe(true);
+    expect(recentLog().find((e) => e.id === "leak-0")).toBeUndefined();
     consoleSpy.mockRestore();
   });
 });
