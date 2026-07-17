@@ -1,16 +1,42 @@
 // Action registry: in-memory log of all dispatched actions with a
-// subscribe API. Fires per state transition. Bounded to a recent
-// window so memory usage stays flat over a long session.
+// subscribe API. Fires per state transition.
 //
-// Performance: eviction uses a head-pointer + tombstones instead of
-// splice + O(n) index re-computation. record() is O(1) amortized.
+// Shape: two single-purpose structures with disjoint lifetimes, so the
+// pending accounting cannot desync from log eviction by construction.
+//
+//   - `inflight` holds the pending dispatches. Entries live exactly as
+//     long as their dispatch is in flight; the table never evicts by
+//     count (only the leak watchdog reclaims past MAX_INFLIGHT), so a
+//     pending entry can never be displaced by log churn.
+//   - `settled` holds terminal snapshots, latest-per-dispatch-id,
+//     bounded to MAX_LOG_SIZE by evicting the lowest-seq entry
+//     (first-record order — the same victim the old single-array
+//     shape picked).
+//
+// A per-dispatch monotonic `seq`, stamped at first record, orders the
+// recomposed getActionLog() view identically to the old array's
+// insertion order.
+//
+// Transition table for record(instance). The caller contract
+// (define.ts) records one pending then at most one terminal per
+// dispatch id, but every cell is defined so no input can desync the
+// accounting:
+//
+//   status   | id in inflight       | id in settled          | id unknown
+//   ---------|----------------------|------------------------|--------------------
+//   pending  | overwrite instance   | move back to inflight  | insert (new seq),
+//            | (keep seq)           | (keep seq), re-index   | index, watchdog
+//   terminal | move to settled      | overwrite instance     | insert into settled
+//            | (keep seq), unindex  | (keep seq + position)  | (new seq), evict
 //
 // Pending state (isPending / pendingCount) is mirrored into reactive signals,
 // so it can be read inside an effect — bindLoadingState is a plain effect over
-// these, not a bespoke subscription. The pendingByName Set stays the source of
-// truth for which ids are in flight; the signals expose the derived counts.
-// The lifecycle fan-out below (record → listeners) is a discrete event stream
-// and stays a plain emitter — events are not reactive state.
+// these, not a bespoke subscription. The pendingByName Set index over
+// `inflight` is the per-name source of truth; the signals expose the derived
+// counts, and the total is `inflight.size` (membership, not paired
+// arithmetic — an unpaired decrement is unrepresentable). The lifecycle
+// fan-out below (record → listeners) is a discrete event stream and stays a
+// plain emitter — events are not reactive state.
 // ---------------------------------------------------------------------------
 
 import { signal, batch, SignalMap } from "@cplieger/reactive";
@@ -18,154 +44,173 @@ import { signal, batch, SignalMap } from "@cplieger/reactive";
 import type { ActionInstance, RegistryListener } from "./types.js";
 
 const MAX_LOG_SIZE = 200;
-const MAX_LOG_HARD = MAX_LOG_SIZE * 5;
 
-const log: (ActionInstance | null)[] = [];
-interface LogSlot {
+/** Leak watchdog threshold for the in-flight table. `settled` is bounded by
+ *  construction, so only a dispatch that never settles (a lifecycle bug in
+ *  the defining layer) can grow state — past this many in-flight entries the
+ *  oldest is reclaimed with a console.warn naming it. This bounds the
+ *  in-flight population specifically; the old shape's equivalent tier
+ *  (MAX_LOG_HARD) bounded the combined log. */
+const MAX_INFLIGHT = 1000;
+
+interface LogEntry {
   instance: ActionInstance;
-  index: number;
+  /** Monotonic stamp assigned at the dispatch id's FIRST record; preserved
+   *  across every transition so the recomposed log keeps first-record order. */
+  readonly seq: number;
 }
-const idMap = new Map<string, LogSlot>();
+
+const inflight = new Map<string, LogEntry>();
+const settled = new Map<string, LogEntry>();
+let seqCounter = 0;
+
 const listeners = new Set<RegistryListener>();
 const namedListeners = new Map<string, Set<RegistryListener>>();
 const pendingByName = new Map<string, Set<string>>();
-let _pendingTotal = 0;
-let _liveCount = 0;
-let _head = 0;
 
-// Test-only: when true, a detected _pendingTotal underflow throws instead of
-// the production warn + clamp, so an add/removePending pairing bug surfaces in
-// tests rather than being silently masked. Production default is false.
-// Toggled via _setThrowOnInvariantViolationForTest (same _*ForTest convention
-// as _resetForTest); reset to false by _resetForTest.
-let _throwOnInvariantViolation = false;
-
-// Reactive mirrors of the pending state. pendingByName remains the source of
-// truth; these signals expose the derived counts so isPending/pendingCount can
-// be read reactively (e.g. by bindLoadingState's effect).
+// Reactive mirrors of the pending state. The inflight table + its name index
+// remain the source of truth; these signals expose the derived counts so
+// isPending/pendingCount can be read reactively (e.g. by bindLoadingState's
+// effect).
 const pendingSigs = new SignalMap<number>();
 const pendingTotalSig = signal(0);
 
-function addPending(name: string, id: string): void {
+/** Add `id` to the name index + refresh the signals. Call AFTER the inflight
+ *  mutation so `inflight.size` is current. */
+function indexPending(name: string, id: string): void {
   let s = pendingByName.get(name);
   if (s === undefined) {
     s = new Set();
     pendingByName.set(name, s);
   }
-  if (s.has(id)) {
-    return;
-  }
   s.add(id);
-  _pendingTotal++;
   const size = s.size;
   batch(() => {
     pendingSigs.ensure(name, 0).value = size;
-    pendingTotalSig.value = _pendingTotal;
+    pendingTotalSig.value = inflight.size;
   });
 }
 
-function removePending(name: string, id: string): void {
+/** Remove `id` from the name index + refresh the signals. Call AFTER the
+ *  inflight mutation. No-op when the id was never indexed. */
+function unindexPending(name: string, id: string): void {
   const s = pendingByName.get(name);
   if (!s?.delete(id)) {
     return;
   }
-  _pendingTotal--;
   const size = s.size;
   if (size === 0) {
     pendingByName.delete(name);
   }
   batch(() => {
     pendingSigs.ensure(name, 0).value = size;
-    pendingTotalSig.value = _pendingTotal;
+    pendingTotalSig.value = inflight.size;
   });
 }
 
-function compact(): void {
-  while (_head < log.length && log[_head] === null) {
-    _head++;
-  }
-  if (_head > 256) {
-    log.splice(0, _head);
-    for (const entry of idMap.values()) {
-      entry.index -= _head;
+/** Bound `settled` by evicting the lowest-seq (first-record order) entry —
+ *  the same victim the old array shape's oldest-position-first scan picked.
+ *  Map insertion order alone is settle order, not first-record order (a
+ *  long-pending dispatch settles late), hence the ≤ (MAX_LOG_SIZE + 1)-entry
+ *  scan. `protectId` shields the entry being recorded right now, matching
+ *  the old shape's `entry.id !== instance.id` eviction guard: a long-lived
+ *  pending that finally settles carries the lowest seq of the whole log and
+ *  would otherwise evict itself the instant it completed. */
+function evictOldestSettled(protectId: string): void {
+  while (settled.size > MAX_LOG_SIZE) {
+    let oldestKey: string | undefined;
+    let oldestSeq = Infinity;
+    for (const [key, entry] of settled) {
+      if (key !== protectId && entry.seq < oldestSeq) {
+        oldestSeq = entry.seq;
+        oldestKey = key;
+      }
     }
-    _head = 0;
+    if (oldestKey === undefined) {
+      return;
+    }
+    settled.delete(oldestKey);
+  }
+}
+
+/** Reclaim the oldest in-flight entry once the table exceeds MAX_INFLIGHT.
+ *  A dispatch that never settles is a lifecycle bug in the defining layer;
+ *  the old shape reclaimed it silently at its hard tier — this names it.
+ *  The reclaimed entry is dropped outright (not moved to `settled`: its
+ *  status is still "pending", and the terminal log must not lie). */
+function reclaimLeakedPending(): void {
+  if (inflight.size <= MAX_INFLIGHT) {
+    return;
+  }
+  let oldestKey: string | undefined;
+  let oldestSeq = Infinity;
+  for (const [key, entry] of inflight) {
+    if (entry.seq < oldestSeq) {
+      oldestSeq = entry.seq;
+      oldestKey = key;
+    }
+  }
+  if (oldestKey === undefined) {
+    return;
+  }
+  const entry = inflight.get(oldestKey);
+  inflight.delete(oldestKey);
+  if (entry !== undefined) {
+    unindexPending(entry.instance.name, oldestKey);
+    console.warn(
+      `[actions] in-flight table exceeded ${String(MAX_INFLIGHT)} entries — reclaiming oldest pending "${entry.instance.name}" (${oldestKey}). A dispatch that never settles is a bug in its action's lifecycle.`,
+    );
   }
 }
 
 /** Record a state transition. Called by define.ts. */
 export function record(instance: ActionInstance): void {
-  const existing = idMap.get(instance.id);
-  if (existing !== undefined) {
-    const prev = existing.instance;
-    if (prev.status === "pending" && instance.status !== "pending") {
-      removePending(prev.name, instance.id);
-    } else if (prev.status !== "pending" && instance.status === "pending") {
-      addPending(instance.name, instance.id);
-    }
-    log[existing.index] = instance;
-    existing.instance = instance;
-    if (instance.status !== "pending" && _liveCount > MAX_LOG_SIZE) {
-      for (let i = _head; i < log.length; i++) {
-        const entry = log[i];
-        if (
-          entry !== null &&
-          entry !== undefined &&
-          entry.status !== "pending" &&
-          entry.id !== instance.id
-        ) {
-          idMap.delete(entry.id);
-          log[i] = null;
-          _liveCount--;
-          if (_liveCount <= MAX_LOG_SIZE) {
-            break;
-          }
-        }
+  const { id } = instance;
+  if (instance.status === "pending") {
+    const inf = inflight.get(id);
+    if (inf !== undefined) {
+      // Pending re-record: in-place overwrite, no accounting change.
+      inf.instance = instance;
+    } else {
+      const done = settled.get(id);
+      if (done !== undefined) {
+        // Terminal → pending re-record. Not produced by define.ts (one
+        // pending, then at most one terminal per id); defined anyway so no
+        // input desyncs the accounting: move back, keep the original seq.
+        settled.delete(id);
+        done.instance = instance;
+        inflight.set(id, done);
+        indexPending(instance.name, id);
+      } else {
+        seqCounter += 1;
+        inflight.set(id, { instance, seq: seqCounter });
+        indexPending(instance.name, id);
+        reclaimLeakedPending();
       }
-      compact();
     }
   } else {
-    const idx = log.length;
-    log.push(instance);
-    idMap.set(instance.id, { instance, index: idx });
-    _liveCount++;
-    if (instance.status === "pending") {
-      addPending(instance.name, instance.id);
-    }
-    if (_liveCount > MAX_LOG_SIZE) {
-      for (let i = _head; i < log.length; i++) {
-        const entry = log[i];
-        if (entry !== null && entry !== undefined && entry.status !== "pending") {
-          idMap.delete(entry.id);
-          log[i] = null;
-          _liveCount--;
-          break;
-        }
+    const inf = inflight.get(id);
+    if (inf !== undefined) {
+      // The common transition: pending → terminal. Membership moves between
+      // the tables; the accounting decrements because the id LEFT inflight,
+      // not because a counter was paired correctly.
+      inflight.delete(id);
+      unindexPending(inf.instance.name, id);
+      inf.instance = instance;
+      settled.set(id, inf);
+      evictOldestSettled(id);
+    } else {
+      const done = settled.get(id);
+      if (done !== undefined) {
+        // Double-terminal record: latest-per-id, keep seq + position.
+        done.instance = instance;
+      } else {
+        // Terminal-only record (cancelled before start, optimistic failure).
+        seqCounter += 1;
+        settled.set(id, { instance, seq: seqCounter });
+        evictOldestSettled(id);
       }
     }
-    if (_liveCount > MAX_LOG_HARD) {
-      for (let i = _head; i < log.length; i++) {
-        const entry = log[i];
-        if (entry !== null && entry !== undefined) {
-          if (entry.status === "pending") {
-            removePending(entry.name, entry.id);
-          }
-          idMap.delete(entry.id);
-          log[i] = null;
-          _liveCount--;
-          break;
-        }
-      }
-    }
-    compact();
-  }
-  if (_pendingTotal < 0) {
-    if (_throwOnInvariantViolation) {
-      throw new Error("[actions] _pendingTotal went negative — invariant violation");
-    }
-    console.warn("[actions] _pendingTotal went negative — invariant violation; clamping to 0");
-    _pendingTotal = 0;
-    pendingTotalSig.value = 0;
   }
   for (const fn of listeners) {
     try {
@@ -211,14 +256,9 @@ export function subscribeByName(name: string, fn: RegistryListener): () => void 
 
 /** @internal Test-only public surface. */
 export function recentLog(): readonly ActionInstance[] {
-  const result: ActionInstance[] = [];
-  for (let i = _head; i < log.length; i++) {
-    const entry = log[i];
-    if (entry != null) {
-      result.push(entry);
-    }
-  }
-  return result;
+  const entries = [...inflight.values(), ...settled.values()];
+  entries.sort((a, b) => a.seq - b.seq);
+  return entries.map((e) => e.instance);
 }
 
 /** Read the recent action log. Useful for devtools integration and
@@ -250,34 +290,12 @@ export function pendingCount(names?: readonly string[]): number {
 
 /** Test-only: clear log + listeners. */
 export function _resetForTest(): void {
-  log.length = 0;
-  _head = 0;
-  _liveCount = 0;
-  idMap.clear();
+  inflight.clear();
+  settled.clear();
+  seqCounter = 0;
   pendingByName.clear();
   listeners.clear();
   namedListeners.clear();
-  _pendingTotal = 0;
-  _throwOnInvariantViolation = false;
   pendingSigs.clearAll();
   pendingTotalSig.value = 0;
-}
-
-/**
- * @internal Test-only: toggle whether a detected `_pendingTotal` underflow
- * throws (true) instead of the production warn + clamp (false). Lets tests
- * assert that an add/removePending pairing bug surfaces loudly. Reset to false
- * by `_resetForTest`.
- */
-export function _setThrowOnInvariantViolationForTest(enabled: boolean): void {
-  _throwOnInvariantViolation = enabled;
-}
-
-/**
- * @internal Test-only: simulate an unpaired `removePending` (an add/remove
- * mismatch) by decrementing the pending total without a matching add, driving
- * the invariant negative. The next `record()` then hits the clamp branch.
- */
-export function _forcePendingUnderflowForTest(): void {
-  _pendingTotal--;
 }

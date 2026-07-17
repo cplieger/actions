@@ -61,10 +61,28 @@ describe("registry pending-accounting property", () => {
           expect(isPending(nm)).toBe(expected > 0);
         }
 
-        // Tombstone invariant: the snapshot never exposes a null/undefined slot.
+        // Snapshot invariants: no null/undefined slots, one entry per id
+        // (latest state), and first-record order preserved across the
+        // recomposed inflight + settled view.
+        const seen = new Set<string>();
+        const firstRecordRank = new Map<string, number>();
+        let rank = 0;
+        for (const o of ops) {
+          const id = `id-${String(o.id)}`;
+          if (!firstRecordRank.has(id)) {
+            firstRecordRank.set(id, rank++);
+          }
+        }
+        let prevRank = -1;
         for (const entry of recentLog()) {
           expect(entry).not.toBeNull();
           expect(entry).not.toBeUndefined();
+          expect(seen.has(entry.id)).toBe(false);
+          seen.add(entry.id);
+          expect(entry.status).toBe(lastStatus.get(entry.id));
+          const r = firstRecordRank.get(entry.id)!;
+          expect(r).toBeGreaterThan(prevRank);
+          prevRank = r;
         }
       }),
       { numRuns: 300 },
