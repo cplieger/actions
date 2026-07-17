@@ -11,7 +11,13 @@ import type { ApiErr, FetchConfig, FetchInstance, RequestOptions } from "@cplieg
 
 import { defineAction, IDEMPOTENCY_HEADER } from "./define.js";
 import { ActionError } from "./error.js";
-import type { Action, ActionContext, ActionDefinition, RequestSpec } from "./types.js";
+import type {
+  Action,
+  ActionContext,
+  ActionDefinition,
+  ActionErrorLike,
+  RequestSpec,
+} from "./types.js";
 
 const JSON_CT = "application/json";
 
@@ -91,6 +97,35 @@ export function _resetApiConfigForTest(): void {
 
 // ---------------------------------------------------------------------------
 
+/** Context passed to the {@link ApiActionDefinition.decode} hook. */
+export interface ApiDecodeContext {
+  /** HTTP status of the 2xx response being decoded. */
+  readonly status: number;
+  /** The request descriptor this response answers. */
+  readonly spec: RequestSpec;
+}
+
+/** A failed request as seen by {@link ApiActionDefinition.decodeError}: the
+ *  real HTTP response's status, the message the fetch layer lifted, the
+ *  server-supplied code (when present), the parsed JSON body (when one
+ *  parsed), and the response headers. Transport-level failures (network /
+ *  timeout / cancellation / invalid — status 0) never reach the hook. */
+export interface ApiErrorInfo {
+  readonly status: number;
+  readonly message: string;
+  readonly code?: string;
+  /** Parsed JSON body of the failed response. Server-controlled input —
+   *  validate the shape before reading fields. */
+  readonly body?: unknown;
+  readonly headers?: Headers;
+}
+
+/** Return shape of {@link ApiActionDefinition.decodeError}: resolve the
+ *  dispatch as a success carrying `value`, or replace the default error. */
+export type ApiErrorDecision<TResult> =
+  | { readonly kind: "success"; readonly value: TResult }
+  | { readonly kind: "error"; readonly error: ActionErrorLike };
+
 /** Caller-facing shape of an apiAction definition. Replaces `run` with
  *  a `request` function that returns an HTTP {@link RequestSpec}. */
 export interface ApiActionDefinition<TArgs, TResult, TOp = unknown> extends Omit<
@@ -98,6 +133,26 @@ export interface ApiActionDefinition<TArgs, TResult, TOp = unknown> extends Omit
   "run"
 > {
   request: (args: TArgs) => RequestSpec;
+
+  /** Decode / validate a 2xx response body. Receives the raw decoded body
+   *  (`undefined` for a 204 / empty-body response) and returns the action
+   *  result; throw (an {@link ActionError}) to route the dispatch to the
+   *  error branch instead (rollback + error notification + registry error) —
+   *  the seam for 200-with-error envelopes. Absent: the body is returned as
+   *  `TResult` unchanged. */
+  decode?: (data: unknown, ctx: ApiDecodeContext) => TResult;
+
+  /** Reinterpret a failed request that produced a real HTTP response. Return
+   *  `{ kind: "success", value }` to resolve the dispatch as success (e.g. a
+   *  409 whose body is a meaningful payload), `{ kind: "error", error }` to
+   *  replace the default error, or `undefined` to keep the default
+   *  {@link ActionError} mapping. Transport failures (status 0: network /
+   *  timeout / cancelled / invalid) never reach this hook, so retry
+   *  classification and cancellation semantics are preserved. */
+  decodeError?: (
+    info: ApiErrorInfo,
+    ctx: { readonly spec: RequestSpec },
+  ) => ApiErrorDecision<TResult> | undefined;
 }
 
 /**
@@ -109,12 +164,12 @@ export interface ApiActionDefinition<TArgs, TResult, TOp = unknown> extends Omit
 export function apiAction<TArgs, TResult = unknown, TOp = unknown>(
   def: ApiActionDefinition<TArgs, TResult, TOp>,
 ): Action<TArgs, TResult> {
-  const { request, ...rest } = def;
+  const { request, decode, decodeError, ...rest } = def;
   return defineAction<TArgs, TResult, TOp>({
     ...rest,
     run: async (args, signal, ctx) => {
       const spec = request(args);
-      return executeRequest<TResult>(spec, signal, ctx);
+      return executeRequest<TResult>(spec, signal, ctx, decode, decodeError);
     },
   });
 }
@@ -123,6 +178,11 @@ async function executeRequest<T>(
   spec: RequestSpec,
   signal: AbortSignal,
   ctx?: ActionContext,
+  decode?: (data: unknown, dctx: ApiDecodeContext) => T,
+  decodeError?: (
+    info: ApiErrorInfo,
+    dctx: { readonly spec: RequestSpec },
+  ) => ApiErrorDecision<T> | undefined,
 ): Promise<T> {
   // Build the request headers here (not via fetch's prepareHeaders seam):
   // actions' hook is spec-aware and receives { spec }, which fetch's plain
@@ -169,6 +229,12 @@ async function executeRequest<T>(
 
   const result = await apiFetch.requestRaw<T>(spec.method, spec.path, opts);
   if (result.ok) {
+    if (decode !== undefined) {
+      // The decoder owns 2xx interpretation: its return is the action result,
+      // its throw routes the dispatch to the error branch (the seam for
+      // 200-with-error envelopes).
+      return decode(result.data, { status: result.status, spec });
+    }
     // fetch collapses a 204 and an empty-body 2xx to data === undefined. Warn
     // on an unexpected empty body (a non-204, non-DELETE response), as before.
     if (result.data === undefined && result.status !== 204 && spec.method !== "DELETE") {
@@ -177,6 +243,34 @@ async function executeRequest<T>(
       );
     }
     return result.data;
+  }
+  // decodeError sees only real HTTP responses (status > 0): transport-level
+  // failures keep the default mapping so retryNetwork classification and
+  // cancellation semantics cannot be accidentally rewritten by the hook.
+  if (decodeError !== undefined && result.status > 0) {
+    const decision = decodeError(
+      {
+        status: result.status,
+        message: result.error,
+        ...(result.code !== undefined && { code: result.code }),
+        ...(result.body !== undefined && { body: result.body }),
+        ...(result.headers !== undefined && { headers: result.headers }),
+      },
+      { spec },
+    );
+    if (decision !== undefined) {
+      if (decision.kind === "success") {
+        return decision.value;
+      }
+      const e = decision.error;
+      throw e instanceof ActionError
+        ? e
+        : new ActionError(e.message, {
+            ...(e.status !== undefined && { status: e.status }),
+            ...(e.code !== undefined && { code: e.code }),
+            ...(e.cause !== undefined && { cause: e.cause }),
+          });
+    }
   }
   throw actionErrorFromApiErr(result);
 }

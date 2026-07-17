@@ -19,11 +19,20 @@ import type {
   ActionContext,
   ActionDefinition,
   ActionErrorLike,
+  ActionOutcome,
   DispatchHandle,
   DispatchOptions,
 } from "./types.js";
 
 let instanceCounter = 0;
+
+/** Monotonic per-definition id, prefixed onto dedupe keys so two definitions
+ *  that happen to share a name can never join each other's in-flight promise
+ *  (the cross-definition `as TResult` type-confusion hazard). */
+let defCounter = 0;
+
+/** Names seen by defineAction, for the duplicate-name diagnostic. */
+const registeredNames = new Set<string>();
 
 const NO_OPTS = Object.freeze({}) as DispatchOptions;
 const NOOP = (): void => {
@@ -60,10 +69,15 @@ function generateIdempotencyKey(): string {
 
 const scopeChains = new Map<string, Promise<unknown>>();
 
-/** Create a DispatchHandle: a Promise augmented with abort(). */
-function makeHandle<T>(promise: Promise<T | null>, abortFn: () => void): DispatchHandle<T> {
-  const handle = promise as DispatchHandle<T>;
+/** Create a DispatchHandle: a Promise augmented with abort() + outcome. */
+function makeHandle<T>(
+  promise: Promise<T | null>,
+  abortFn: () => void,
+  outcome: Promise<ActionOutcome<T>>,
+): DispatchHandle<T> {
+  const handle = promise as DispatchHandle<T> & { outcome: Promise<ActionOutcome<T>> };
   handle.abort = abortFn;
+  handle.outcome = outcome;
   return handle;
 }
 
@@ -81,6 +95,15 @@ const activeDedupes = new Map<string, DedupeSlot>();
 export function defineAction<TArgs, TResult, TOp = unknown>(
   def: ActionDefinition<TArgs, TResult, TOp>,
 ): Action<TArgs, TResult> {
+  defCounter += 1;
+  const defId = defCounter;
+  if (registeredNames.has(def.name)) {
+    console.warn(
+      `[actions] duplicate action name "${def.name}" — the registry log and name-keyed helpers (isPending, subscribeByName, bindLoadingState) will conflate the two definitions`,
+    );
+  } else {
+    registeredNames.add(def.name);
+  }
   const inFlight = new Map<string, AbortController>();
   const started = new Set<string>();
   const scopeSkipResolvers = new Map<string, () => void>();
@@ -112,11 +135,48 @@ export function defineAction<TArgs, TResult, TOp = unknown>(
       });
     }
   }
+  /** Fire the definition-level then per-dispatch success callbacks — the one
+   *  block shared by the executing path and the dedupe-join path. */
+  function fireSuccessCallbacks(
+    result: TResult,
+    args: TArgs,
+    opts: DispatchOptions<TArgs, TResult>,
+  ): void {
+    fireDefSuccess(result, args);
+    const onSuccessCb = opts.onSuccess;
+    if (onSuccessCb) {
+      safeInvoke(def.name, "onSuccess", () => {
+        onSuccessCb(result, args);
+      });
+    }
+  }
+  /** Fire the definition-level then per-dispatch error callbacks — the one
+   *  block shared by the executing path and the dedupe-join path. */
+  function fireErrorCallbacks(
+    err: ActionErrorLike,
+    args: TArgs,
+    opts: DispatchOptions<TArgs, TResult>,
+  ): void {
+    fireDefError(err, args);
+    const onErrorCb = opts.onError;
+    if (onErrorCb) {
+      safeInvoke(def.name, "onError", () => {
+        onErrorCb(err, args);
+      });
+    }
+  }
 
   function dispatch(
     args: TArgs,
     opts: DispatchOptions<TArgs, TResult> = NO_OPTS,
   ): DispatchHandle<TResult> {
+    // Typed terminal outcome, resolved exactly once at whichever terminal
+    // point this dispatch reaches. Kept OUT of the legacy promise chain so
+    // existing resolution timing is untouched.
+    let resolveOutcome!: (o: ActionOutcome<TResult>) => void;
+    const outcomePromise = new Promise<ActionOutcome<TResult>>((r) => {
+      resolveOutcome = r;
+    });
     const fireSettledHooks = (): void => {
       fireDefSettled(args);
       const onSettledCb = opts.onSettled;
@@ -133,49 +193,40 @@ export function defineAction<TArgs, TResult, TOp = unknown>(
         const shared = entry.promise;
         if (shared === undefined) {
           fireSettledHooks();
-          return makeHandle(Promise.resolve(null) as Promise<TResult | null>, NOOP);
+          resolveOutcome({ status: "cancelled" });
+          return makeHandle(Promise.resolve(null) as Promise<TResult | null>, NOOP, outcomePromise);
         }
         const joined = (shared as Promise<TResult | null>).then(
           (v) => {
             if (v !== null || entry.succeeded === true) {
-              fireDefSuccess(v as TResult, args);
-              const onSuccessCb = opts.onSuccess;
-              if (onSuccessCb) {
-                safeInvoke(def.name, "onSuccess", () => {
-                  onSuccessCb(v as TResult, args);
-                });
-              }
+              fireSuccessCallbacks(v as TResult, args, opts);
+              resolveOutcome({ status: "success", value: v as TResult });
             } else if (entry.error !== undefined) {
               const capturedErr = entry.error;
-              fireDefError(capturedErr, args);
-              const onErrorCb = opts.onError;
-              if (onErrorCb) {
-                safeInvoke(def.name, "onError", () => {
-                  onErrorCb(capturedErr, args);
-                });
-              }
+              fireErrorCallbacks(capturedErr, args, opts);
+              resolveOutcome({ status: "error", error: capturedErr });
             } else if (entry.cancelled !== true) {
               const dedupeErr: ActionErrorLike = {
                 message: "deduped dispatch did not succeed",
                 code: "dedupe",
               };
-              fireDefError(dedupeErr, args);
-              const onErrorCb = opts.onError;
-              if (onErrorCb) {
-                safeInvoke(def.name, "onError", () => {
-                  onErrorCb(dedupeErr, args);
-                });
-              }
+              fireErrorCallbacks(dedupeErr, args, opts);
+              resolveOutcome({ status: "error", error: dedupeErr });
+            } else {
+              resolveOutcome({ status: "cancelled" });
             }
             fireSettledHooks();
             return v;
           },
-          () => {
+          (reason: unknown) => {
+            // Defensive: runOnce never rejects; a rejection here means the
+            // shared promise itself failed. Surface it as an error outcome.
+            resolveOutcome({ status: "error", error: toActionError(reason) });
             fireSettledHooks();
             return null;
           },
         );
-        return makeHandle(joined, NOOP);
+        return makeHandle(joined, NOOP, outcomePromise);
       }
     }
 
@@ -195,11 +246,11 @@ export function defineAction<TArgs, TResult, TOp = unknown>(
 
     let result: Promise<TResult | null>;
     if (scopeKey === null) {
-      result = runOnce(args, opts, ac, id, dedupeEntry, dedupeKey, dispatchedAt);
+      result = runOnce(args, opts, ac, id, dedupeEntry, dedupeKey, dispatchedAt, resolveOutcome);
     } else {
       const prev = scopeChains.get(scopeKey) ?? Promise.resolve();
       const next = prev.then(() =>
-        runOnce(args, opts, ac, id, dedupeEntry, dedupeKey, dispatchedAt),
+        runOnce(args, opts, ac, id, dedupeEntry, dedupeKey, dispatchedAt, resolveOutcome),
       );
       let tailResolve!: () => void;
       const tail = new Promise<void>((r) => {
@@ -241,6 +292,7 @@ export function defineAction<TArgs, TResult, TOp = unknown>(
           });
         } finally {
           fireSettledHooks();
+          resolveOutcome({ status: "cancelled" });
           earlyCancelResolve(null);
         }
       });
@@ -259,9 +311,13 @@ export function defineAction<TArgs, TResult, TOp = unknown>(
       });
     }
 
-    return makeHandle(result, () => {
-      ac.abort();
-    });
+    return makeHandle(
+      result,
+      () => {
+        ac.abort();
+      },
+      outcomePromise,
+    );
   }
 
   function dedupeKeyFor(args: TArgs): string | null {
@@ -270,7 +326,10 @@ export function defineAction<TArgs, TResult, TOp = unknown>(
       return null;
     }
     const argKey = typeof cfg === "function" ? cfg(args) : safeStringify(args);
-    return `${def.name}::${argKey}`;
+    // defId prefix: dedupe joins are per-definition by contract. Without it,
+    // two definitions sharing a name would join each other's in-flight
+    // promise and coerce a foreign result via `as TResult`.
+    return `${String(defId)}::${def.name}::${argKey}`;
   }
 
   function evictDedupeSlot(dk: string | null, entry: DedupeSlot | null): void {
@@ -288,10 +347,12 @@ export function defineAction<TArgs, TResult, TOp = unknown>(
     dedupeEntry: DedupeSlot | null,
     dedupeKey: string | null,
     dispatchedAt: number,
+    resolveOutcome: (o: ActionOutcome<TResult>) => void,
   ): Promise<TResult | null> {
     started.add(id);
     if (!inFlight.has(id) && ac.signal.aborted) {
       started.delete(id);
+      resolveOutcome({ status: "cancelled" });
       return null;
     }
     const settle = (): void => {
@@ -321,6 +382,7 @@ export function defineAction<TArgs, TResult, TOp = unknown>(
         completedAt: now,
       });
       fireDefSettled(args);
+      resolveOutcome({ status: "cancelled" });
       settle();
       return null;
     }
@@ -365,14 +427,9 @@ export function defineAction<TArgs, TResult, TOp = unknown>(
           error: err,
         });
         emitErrorToast(args, err);
-        fireDefError(err, args);
-        const onErrorCb = opts.onError;
-        if (onErrorCb) {
-          safeInvoke(def.name, "onError", () => {
-            onErrorCb(err, args);
-          });
-        }
+        fireErrorCallbacks(err, args, opts);
         fireDefSettled(args);
+        resolveOutcome({ status: "error", error: err });
         settle();
         return null;
       }
@@ -413,6 +470,7 @@ export function defineAction<TArgs, TResult, TOp = unknown>(
           }
         }
         fireDefSettled(args);
+        resolveOutcome({ status: "cancelled" });
         return null;
       }
       record({
@@ -431,14 +489,9 @@ export function defineAction<TArgs, TResult, TOp = unknown>(
       }
       evictDedupeSlot(dedupeKey, dedupeEntry);
       emitSuccessToast(args, result, opts);
-      fireDefSuccess(result, args);
-      const onSuccessCb = opts.onSuccess;
-      if (onSuccessCb) {
-        safeInvoke(def.name, "onSuccess", () => {
-          onSuccessCb(result, args);
-        });
-      }
+      fireSuccessCallbacks(result, args, opts);
       fireDefSettled(args);
+      resolveOutcome({ status: "success", value: result, attempts });
       return result;
     } catch (e: unknown) {
       const err = toActionError(e);
@@ -474,15 +527,18 @@ export function defineAction<TArgs, TResult, TOp = unknown>(
       }
       if (!cancelled) {
         emitErrorToast(args, err);
-        fireDefError(err, args);
-        const onErrorCb = opts.onError;
-        if (onErrorCb) {
-          safeInvoke(def.name, "onError", () => {
-            onErrorCb(err, args);
-          });
-        }
+        fireErrorCallbacks(err, args, opts);
       }
       fireDefSettled(args);
+      if (cancelled) {
+        resolveOutcome({ status: "cancelled" });
+      } else {
+        resolveOutcome({
+          status: "error",
+          error: err,
+          ...(attempts !== undefined && { attempts }),
+        });
+      }
       return null;
     } finally {
       settle();
@@ -688,9 +744,12 @@ export function defineAction<TArgs, TResult, TOp = unknown>(
   return action;
 }
 
-/** Test-only: reset the instance counter + scope chains + dedupe map. */
+/** Test-only: reset the instance/definition counters + name registry +
+ *  scope chains + dedupe map. */
 export function _resetForTest(): void {
   instanceCounter = 0;
+  defCounter = 0;
+  registeredNames.clear();
   _resetSymbols();
   scopeChains.clear();
   activeDedupes.clear();

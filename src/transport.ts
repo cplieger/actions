@@ -31,6 +31,11 @@ export type TransportSendFn = (
   opts: { signal: AbortSignal },
 ) => Promise<TransportSendResult>;
 
+/** Command field name carrying the per-dispatch idempotency key injected by
+ *  {@link transportAction}. Exported so consumer-authored custom runners can
+ *  share the wire convention instead of hand-copying the literal. */
+export const IDEMPOTENCY_COMMAND_FIELD = "idempotency_key";
+
 let _send: TransportSendFn | undefined;
 
 /**
@@ -82,7 +87,7 @@ export function transportAction<TArgs, TOp = unknown>(
       const raw = command(args);
       let cmd: TransportCommand;
       if (ctx?.idempotencyKey !== undefined) {
-        cmd = { ...raw, idempotency_key: ctx.idempotencyKey };
+        cmd = { ...raw, [IDEMPOTENCY_COMMAND_FIELD]: ctx.idempotencyKey };
       } else {
         cmd = raw;
       }
