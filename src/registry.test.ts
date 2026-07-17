@@ -368,6 +368,69 @@ describe("split-shape transition table", () => {
   });
 });
 
+describe("transition atomicity under synchronous observers", () => {
+  it("a signal effect observing settlement sees the entry as terminal, never absent", async () => {
+    const { effect } = await import("@cplieger/reactive");
+    record(makeInstance({ id: "atomic-1", name: "atom.op", status: "pending" }));
+    const observed: (string | undefined)[] = [];
+    const stop = effect(() => {
+      // Track the name's pending signal; on each flush snapshot the entry's
+      // visibility in the recomposed log.
+      isPending("atom.op");
+      observed.push(recentLog().find((e) => e.id === "atomic-1")?.status);
+    });
+    record(makeInstance({ id: "atomic-1", name: "atom.op", status: "success" }));
+    stop();
+    // First run: pending. Settlement flush: success. NEVER undefined (the
+    // old ordering published signals while the id was in neither table).
+    expect(observed).toEqual(["pending", "success"]);
+  });
+
+  it("a reentrant same-id record from a signal effect lands on the revive cell, not a duplicate", async () => {
+    const { effect } = await import("@cplieger/reactive");
+    record(makeInstance({ id: "reent-1", name: "reent.op", status: "pending" }));
+    let reentered = false;
+    const stop = effect(() => {
+      const pending = isPending("reent.op");
+      if (!pending && !reentered && recentLog().some((e) => e.id === "reent-1")) {
+        reentered = true;
+        // Fires synchronously inside the settlement flush: the entry must
+        // already be in `settled`, so this re-record takes the revive cell.
+        record(makeInstance({ id: "reent-1", name: "reent.op", status: "pending" }));
+      }
+    });
+    record(makeInstance({ id: "reent-1", name: "reent.op", status: "success" }));
+    stop();
+    expect(reentered).toBe(true);
+    const entries = recentLog().filter((e) => e.id === "reent-1");
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.status).toBe("pending");
+    expect(pendingCount(["reent.op"])).toBe(1);
+    expect(pendingCount()).toBe(1);
+  });
+
+  it("listeners observe post-transition state on both pending and terminal fan-out", () => {
+    const seen: { status: string; pending: number; inLog: boolean }[] = [];
+    const unsub = subscribe((inst) => {
+      if (inst.id !== "fan-1") {
+        return;
+      }
+      seen.push({
+        status: inst.status,
+        pending: pendingCount(["fan.op"]),
+        inLog: recentLog().some((e) => e.id === "fan-1" && e.status === inst.status),
+      });
+    });
+    record(makeInstance({ id: "fan-1", name: "fan.op", status: "pending" }));
+    record(makeInstance({ id: "fan-1", name: "fan.op", status: "success" }));
+    unsub();
+    expect(seen).toEqual([
+      { status: "pending", pending: 1, inLog: true },
+      { status: "success", pending: 0, inLog: true },
+    ]);
+  });
+});
+
 describe("in-flight leak watchdog", () => {
   it("reclaims the oldest pending past the threshold with a warn and corrected counts", () => {
     const consoleSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -380,6 +443,41 @@ describe("in-flight leak watchdog", () => {
     expect(pendingCount()).toBe(1000);
     expect(isPending("leaky.op")).toBe(true);
     expect(recentLog().find((e) => e.id === "leak-0")).toBeUndefined();
+    consoleSpy.mockRestore();
+  });
+
+  it("warns once per overflow operation across successive overflows", () => {
+    const consoleSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    for (let i = 0; i < 1000; i++) {
+      record(makeInstance({ id: `w-${String(i)}`, status: "pending" }));
+    }
+    expect(consoleSpy).not.toHaveBeenCalled();
+    record(makeInstance({ id: "w-over-1", status: "pending" }));
+    record(makeInstance({ id: "w-over-2", status: "pending" }));
+    expect(consoleSpy).toHaveBeenCalledTimes(2);
+    expect(pendingCount()).toBe(1000);
+    consoleSpy.mockRestore();
+  });
+
+  it("a terminal → pending revival at capacity triggers reclamation and protects the revived id", () => {
+    const consoleSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    // A retained terminal whose seq is the OLDEST of the whole log.
+    record(makeInstance({ id: "revived", name: "old.op", status: "cancelled" }));
+    for (let i = 0; i < 1000; i++) {
+      record(makeInstance({ id: `cap-${String(i)}`, name: "bulk.op", status: "pending" }));
+    }
+    expect(pendingCount()).toBe(1000);
+    // Revive the retained terminal: the table would hit 1001 — the watchdog
+    // must reclaim the oldest OTHER pending, never the just-revived entry.
+    record(makeInstance({ id: "revived", name: "old.op", status: "pending" }));
+    expect(consoleSpy).toHaveBeenCalledTimes(1);
+    expect(consoleSpy.mock.calls[0]?.[0]).toContain("cap-0");
+    expect(pendingCount()).toBe(1000);
+    expect(isPending("old.op")).toBe(true);
+    expect(recentLog().find((e) => e.id === "revived")?.status).toBe("pending");
+    expect(recentLog().find((e) => e.id === "cap-0")).toBeUndefined();
+    // Cross-name signal correction: bulk.op lost exactly one.
+    expect(pendingCount(["bulk.op"])).toBe(999);
     consoleSpy.mockRestore();
   });
 });
