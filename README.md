@@ -140,9 +140,27 @@ const deleteTool = apiAction<{ name: string }, DeleteToolResult>({
 Transport-level failures (network / timeout / cancellation — `status` 0)
 never reach `decodeError`, so `retryNetwork` classification and cancellation
 semantics can't be accidentally rewritten. `info.body` is server-controlled
-input: validate its shape before reading fields. `run()` on a plain
-`defineAction` remains the universal escape hatch for wire contracts beyond
-both hooks (e.g. non-JSON request bodies).
+input: validate its shape before reading fields.
+
+For nonstandard **request** bodies, `RequestSpec.rawBody` is the encoder
+seam: a pre-encoded `BodyInit` sent as-is (no JSON encoding, no automatic
+Content-Type — set the type via `headers`), computed per dispatch by the
+`request()` function:
+
+```typescript
+const saveConfig = apiAction<string, unknown>({
+  name: "config.save",
+  request: (yaml) => ({
+    method: "PUT",
+    path: "/api/config",
+    rawBody: yaml,
+    headers: { "Content-Type": "text/yaml" },
+  }),
+});
+```
+
+`run()` on a plain `defineAction` remains the universal escape hatch for wire
+contracts beyond these seams.
 
 ## API
 
