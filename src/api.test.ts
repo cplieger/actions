@@ -79,6 +79,26 @@ describe("apiAction", () => {
     expect(log?.error?.message).toBe("Not found");
   });
 
+  it("PUT sends rawBody verbatim with the caller's Content-Type (encoder seam)", async () => {
+    mockFetch.mockResolvedValue(new Response(JSON.stringify({ status: "saved" }), { status: 200 }));
+    const action = apiAction<string>({
+      name: "test.raw_put",
+      request: (yaml) => ({
+        method: "PUT",
+        path: "/api/config",
+        rawBody: yaml,
+        headers: { "Content-Type": "text/yaml" },
+      }),
+      error: "Failed",
+    });
+    await action.dispatch("providers:\n  enabled: true\n");
+    const [url, opts] = mockFetch.mock.calls[0]!;
+    expect(url).toBe("/api/config");
+    expect(opts.method).toBe("PUT");
+    expect(opts.body).toBe("providers:\n  enabled: true\n"); // NOT JSON-encoded
+    expect((opts.headers as Headers).get("content-type")).toBe("text/yaml");
+  });
+
   it("POST sends JSON body with Content-Type header", async () => {
     mockFetch.mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }));
     const action = apiAction<{ name: string }>({

@@ -205,7 +205,14 @@ export type RequestSpec =
   | {
       readonly method: "POST" | "PUT" | "PATCH" | "DELETE";
       readonly path: string;
+      /** JSON-encoded request body. Mutually exclusive with `rawBody`. */
       readonly body?: unknown;
+      /** Pre-encoded request body, sent as-is with NO JSON encoding and NO
+       *  automatic Content-Type — set the type via `headers` (e.g. a YAML
+       *  document with `Content-Type: text/yaml`). The request() function is
+       *  the encoder seam: compute the encoded payload there per dispatch.
+       *  Mutually exclusive with `body`. */
+      readonly rawBody?: BodyInit;
       readonly headers?: Readonly<Record<string, string>>;
     };
 

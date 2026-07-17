@@ -223,8 +223,14 @@ async function executeRequest<T>(
     timeoutMs: API_TIMEOUT_MS,
     headers: effectiveHeaders,
   };
-  if (spec.method !== "GET" && spec.body !== undefined) {
-    opts.body = spec.body;
+  if (spec.method !== "GET") {
+    if (spec.rawBody !== undefined) {
+      // Pre-encoded body: fetch sends it as-is (no JSON encoding, no
+      // automatic Content-Type — spec.headers carries the type).
+      opts.rawBody = spec.rawBody;
+    } else if (spec.body !== undefined) {
+      opts.body = spec.body;
+    }
   }
 
   const result = await apiFetch.requestRaw<T>(spec.method, spec.path, opts);
