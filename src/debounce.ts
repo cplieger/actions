@@ -59,7 +59,10 @@ export function debouncedDispatch<TArgs, TResult>(
       void action.dispatch(args);
       lastFiredAt = now;
       lastArgs = undefined;
-      pending = true;
+      // Nothing is scheduled after a leading-edge fire — the timer below is a
+      // cooldown re-arm, not a pending dispatch — so isPending() reads false
+      // until a call lands inside the quiet window (doc contract above).
+      pending = false;
       if (timer !== undefined) {
         clearTimeout(timer);
       }
@@ -88,7 +91,9 @@ export function debouncedDispatch<TArgs, TResult>(
     lastArgs = undefined;
     if (a !== undefined) {
       lastFiredAt = Date.now();
-      pending = true;
+      // The coalesced args fire now; the re-armed timer is a cooldown window
+      // with nothing scheduled in it yet, so isPending() reads false.
+      pending = false;
       timer = setTimeout(fireTrailing, opts.wait);
       void action.dispatch(a);
     } else {
