@@ -13,8 +13,8 @@
     "test": "vitest --run"
   },
   "dependencies": {
-    "@cplieger/fetch": "2.1.0",
-    "@cplieger/reactive": "1.2.5"
+    "@cplieger/fetch": "^2.1.0",
+    "@cplieger/reactive": "^1.2.5"
   },
   "overrides": {
     "typed-rest-client": {
