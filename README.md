@@ -9,7 +9,7 @@
 
 > Declarative UI-actions framework with lifecycle management, retry, debounce, and polling.
 
-A standalone TypeScript library for defining and dispatching UI actions with full lifecycle support: optimistic updates, automatic retry with backoff, scope serialization, dedupe collapsing, notification wiring, polling, button-feedback helpers, and a registry for observability. Built on [`@cplieger/reactive`](https://github.com/cplieger/reactive) — action pending-state is signal-backed, so `isPending`/`pendingCount` are reactive and `bindLoadingState` is a plain effect over them. HTTP-backed `apiAction`s route their requests through [`@cplieger/fetch`](https://github.com/cplieger/fetch), the toolkit's shared request core (base URL, credentials, header prep, and a custom `fetchFn` are injected via `configureApi`). Notification display and streaming transport are injected by the consumer via small interfaces.
+A standalone TypeScript library for defining and dispatching UI actions with full lifecycle support: optimistic updates, automatic retry with backoff, scope serialization, dedupe collapsing, notification wiring, polling, button-feedback helpers, and a registry for observability. Two runtime dependencies: [`@cplieger/reactive`](https://github.com/cplieger/reactive) backs the reactive pending-state (`isPending`/`pendingCount`), and [`@cplieger/fetch`](https://github.com/cplieger/fetch) carries `apiAction` HTTP requests. Notification display and streaming transport are injected by the consumer via small interfaces.
 
 ## Install
 
@@ -49,9 +49,9 @@ await deleteItem.dispatch(itemId);
 
 The framework provides three adapter injection points:
 
-- **Notifier** (`configure()`): Provides `success(msg)` and `error(msg, retry?)` methods for displaying notifications. Without configuration, notifications are dropped — and the framework warns once on the first drop, since a forgotten `configure()` call is otherwise invisible. Call `configure({})` to opt into intentional headless silence (tests, non-UI environments); an explicitly configured notifier never warns, even with missing methods.
+- **Notifier** (`configure()`): Provides `success(msg)` and `error(msg, retry?)` methods for displaying notifications. Without configuration, notifications are dropped and the framework warns once on the first drop; a forgotten `configure()` call is otherwise invisible. Call `configure({})` to opt into intentional headless silence (tests, non-UI environments); an explicitly configured notifier never warns, even with missing methods.
 
-- **API** (`configureApi()`): Configures the HTTP layer used by all `apiAction` instances — base URL, auth/CSRF headers, credentials mode, or a custom fetch implementation. Without configuration, `apiAction` uses the global `fetch` with relative paths.
+- **API** (`configureApi()`): Configures the HTTP layer used by all `apiAction` instances: base URL, auth/CSRF headers, credentials mode, or a custom fetch implementation. Without configuration, `apiAction` uses the global `fetch` with relative paths.
 
 - **Transport** (`configureTransport()`): Provides a `send(cmd, opts)` function for SSE/streaming actions. Only needed if using `transportAction`.
 
@@ -72,12 +72,12 @@ configureApi({
 
 Options (mirrors RTK `fetchBaseQuery`):
 
-- `baseUrl` — prepended to every `RequestSpec.path`
-- `prepareHeaders(headers, { spec })` — inject headers per-request (may be async)
-- `credentials` — `RequestInit.credentials` mode (e.g. `"include"` for cookies)
-- `fetchFn` — custom fetch implementation (SSR, testing)
+- `baseUrl`: prepended to every `RequestSpec.path`
+- `prepareHeaders(headers, { spec })`: inject headers per-request (may be async)
+- `credentials`: `RequestInit.credentials` mode (e.g. `"include"` for cookies)
+- `fetchFn`: custom fetch implementation (SSR, testing)
 
-> **Path contract:** `RequestSpec.path` is expected to be a **relative** path. With `baseUrl` set, the configured scheme+host always precede it, so an absolute (`https://…`) or protocol-relative (`//host`) path is neutralised (kept as a path segment) and cannot override the origin. With `baseUrl` **unset**, `path` is passed to `fetch()` verbatim — the caller owns the full URL and must never pass untrusted input (e.g. a server-supplied string) as the whole path.
+> **Path contract:** `RequestSpec.path` is expected to be a **relative** path. With `baseUrl` set, the configured scheme+host always precede it, so an absolute (`https://…`) or protocol-relative (`//host`) path is neutralised (kept as a path segment) and cannot override the origin. With `baseUrl` **unset**, `path` is passed to `fetch()` verbatim; the caller owns the full URL and must never pass untrusted input (e.g. a server-supplied string) as the whole path.
 
 Per-request headers can also be set directly on `RequestSpec`:
 
@@ -100,8 +100,9 @@ By default `apiAction` treats any 2xx as success and any failure as an
 speak nonstandard envelopes:
 
 `decode(data, { status, spec })` runs on every 2xx. Return the action result,
-or **throw** to route the dispatch to the error branch (rollback + error
-notification + registry error status) — the seam for 200-with-error envelopes:
+or **throw** to route the dispatch to the error branch (rollback, error
+notification, registry error status). This is the seam for 200-with-error
+envelopes:
 
 ```typescript
 const stage = apiAction<{ repo: string }, { output?: string }>({
@@ -137,14 +138,14 @@ const deleteTool = apiAction<{ name: string }, DeleteToolResult>({
 });
 ```
 
-Transport-level failures (network / timeout / cancellation — `status` 0)
+Transport-level failures (network / timeout / cancellation, `status` 0)
 never reach `decodeError`, so `retryNetwork` classification and cancellation
 semantics can't be accidentally rewritten. `info.body` is server-controlled
 input: validate its shape before reading fields.
 
 For nonstandard **request** bodies, `RequestSpec.rawBody` is the encoder
 seam: a pre-encoded `BodyInit` sent as-is (no JSON encoding, no automatic
-Content-Type — set the type via `headers`), computed per dispatch by the
+Content-Type; set the type via `headers`), computed per dispatch by the
 `request()` function:
 
 ```typescript
@@ -164,30 +165,30 @@ contracts beyond these seams.
 
 ## API
 
-- `configure(notifier)` — inject the notification adapter
-- `configureApi(opts)` — configure the HTTP layer (baseUrl, headers, credentials, fetchFn)
-- `configureTransport(fn)` — inject the streaming transport adapter
-- `defineAction(def)` — create an action from a declarative definition. Action names should be unique: a duplicate name gets a one-time console warning, since the registry log and the name-keyed helpers (`isPending`, `subscribeByName`, `bindLoadingState`) conflate same-named definitions
-- `apiAction(def)` — create an HTTP-backed action (uses `fetch`); optional `decode` / `decodeError` hooks own nonstandard-envelope interpretation (see above)
-- `transportAction(def)` — create a transport/SSE-backed action
-- `debouncedDispatch(action, opts)` — debounce wrapper
-- `pollAction(action, args, opts)` — interval polling with pause/backoff
-- `bindLoadingState(name, el, opts?)` — bind an element's disabled/aria-busy state to action pending; a reactive effect over the pending signals. The binding auto-disposes when the element leaves the DOM — an element re-attached later (e.g. a list re-render reusing nodes) is no longer bound and needs a fresh `bindLoadingState` call
-- `pollUntil(step, opts)` — poll until a terminal condition (wait-then-poll, `until` predicate, `maxAttempts`/`timeoutMs` budgets, backoff-on-transient); returns `{status:'done'|'timeout'|'aborted'}`. A standalone sibling to `pollAction` for one-shot terminal-state waits.
-- `withAsyncFeedback(btn, fn, opts?)` — per-button async feedback (spinner → ✓/✗ → restore) with a re-entry guard + sr-only announce + injectable glyphs. `target?: HTMLElement` runs the cycle on a child slot via in-place element replacement (siblings/label untouched); `resetMs: 0` persists the outcome glyph (no auto-revert).
-- `subscribeToActions(fn)` — subscribe to all lifecycle events (discrete event stream)
-- `subscribeByName(name, fn)` — subscribe to lifecycle events for a single action name (discrete event stream)
-- `getActionLog()` — read the recent action log (for devtools/debugging)
-- `pendingCount(names?)` — pending action count; reactive (tracks inside an effect)
-- `isPending(name)` — check if a named action is in-flight; reactive (tracks inside an effect)
-- `registerCleanup(fn)` — register teardown hooks for page unload
-- `ActionError` — structured error class with status/code
-- `retryNetwork` — preset retry classifier for transient failures
-- `classifyFetchError(err)` — classify fetch errors (network vs timeout vs HTTP)
-- `hasErrorString(err)` — type guard for objects with a `.message` string
-- `RETRY_STANDARD` — standard retry config (2 retries, 300ms)
-- `IDEMPOTENCY_HEADER` — the `Idempotency-Key` HTTP header name `apiAction` sets from `ctx.idempotencyKey`; import it in custom `run()` implementations instead of hand-copying the literal
-- `IDEMPOTENCY_COMMAND_FIELD` — the `idempotency_key` command field `transportAction` injects; same sharing purpose for custom transport runners
+- `configure(notifier)`: inject the notification adapter
+- `configureApi(opts)`: configure the HTTP layer (baseUrl, headers, credentials, fetchFn)
+- `configureTransport(fn)`: inject the streaming transport adapter
+- `defineAction(def)`: create an action from a declarative definition. Keep names unique: duplicates get a one-time warning, and the name-keyed helpers (`isPending`, `subscribeByName`, `bindLoadingState`) conflate them
+- `apiAction(def)`: create an HTTP-backed action (uses `fetch`); optional `decode` / `decodeError` hooks own nonstandard-envelope interpretation (see above)
+- `transportAction(def)`: create a transport/SSE-backed action
+- `debouncedDispatch(action, opts)`: debounce wrapper
+- `pollAction(action, args, opts)`: interval polling with pause/backoff
+- `bindLoadingState(name, el, opts?)`: bind an element's disabled/aria-busy state to action pending. The binding auto-disposes when the element leaves the DOM; a re-attached element (e.g. a list re-render reusing nodes) needs a fresh call
+- `pollUntil(step, opts)`: one-shot poll until a terminal condition (`until` predicate, `maxAttempts`/`timeoutMs` budgets, backoff on transient errors); returns `{status:'done'|'timeout'|'aborted'}`
+- `withAsyncFeedback(btn, fn, opts?)`: per-button async feedback (spinner, then outcome glyph, then restore) with a re-entry guard and screen-reader announcement. `target` scopes the cycle to a child slot; `resetMs: 0` persists the outcome glyph
+- `subscribeToActions(fn)`: subscribe to all lifecycle events (discrete event stream)
+- `subscribeByName(name, fn)`: subscribe to lifecycle events for a single action name (discrete event stream)
+- `getActionLog()`: read the recent action log (for devtools/debugging)
+- `pendingCount(names?)`: pending action count; reactive (tracks inside an effect)
+- `isPending(name)`: check if a named action is in-flight; reactive (tracks inside an effect)
+- `registerCleanup(fn)`: register teardown hooks for page unload
+- `ActionError`: structured error class with status/code
+- `retryNetwork`: preset retry classifier for transient failures
+- `classifyFetchError(err)`: classify fetch errors (network vs timeout vs HTTP)
+- `hasErrorString(err)`: type guard for objects with a `.message` string
+- `RETRY_STANDARD`: standard retry config (2 retries, 300ms)
+- `IDEMPOTENCY_HEADER`: the `Idempotency-Key` HTTP header name `apiAction` sets from `ctx.idempotencyKey`; import it in custom `run()` implementations instead of hand-copying the literal
+- `IDEMPOTENCY_COMMAND_FIELD`: the `idempotency_key` command field `transportAction` injects; same sharing purpose for custom transport runners
 
 > `withTimeout(signal, ms)` and `API_TIMEOUT_MS` moved to [`@cplieger/fetch`](https://github.com/cplieger/fetch) (the layer that owns timeout composition); import them from there.
 
@@ -203,7 +204,7 @@ beforeEach(() => {
 });
 ```
 
-- `resetActionFramework()` — clear every framework state slot (define, registry, cleanup, api, transport, notifier). Call from `beforeEach()` to isolate tests.
+- `resetActionFramework()`: clear every framework state slot (define, registry, cleanup, api, transport, notifier). Call from `beforeEach()` to isolate tests.
 
 > **Breaking change in v2.0:** the `./src/*` deep-import escape hatch was removed
 > from `package.json` exports. Migrate any deep `/src/*` import to
@@ -228,7 +229,7 @@ const save = defineAction({
 
 ### Per-dispatch abort handle (RTK pattern)
 
-`dispatch()` returns a `DispatchHandle` — a Promise augmented with an `abort()` method for per-dispatch cancellation:
+`dispatch()` returns a `DispatchHandle`, a Promise augmented with an `abort()` method for per-dispatch cancellation:
 
 ```typescript
 const handle = action.dispatch(args);
@@ -240,17 +241,17 @@ const result = await handle;
 
 ### Typed outcome accessor (`handle.outcome`)
 
-The handle's own resolution is deliberately never-rejecting `TResult | null`,
-which collapses three terminal states — and makes a legitimately-`null`
-result indistinguishable from failure. `handle.outcome` is the opt-in typed
-accessor for callers that need the distinction:
+The handle itself resolves to a never-rejecting `TResult | null`, which
+collapses three terminal states and makes a legitimately-`null` result
+indistinguishable from failure. `handle.outcome` is the typed accessor for
+callers that need the distinction:
 
 ```typescript
 const handle = action.dispatch(args);
 const outcome = await handle.outcome; // never rejects
 switch (outcome.status) {
   case "success":
-    use(outcome.value); // TResult — including a legitimate null
+    use(outcome.value); // TResult, including a legitimate null
     break;
   case "error":
     show(outcome.error.message); // the normalized ActionErrorLike
@@ -262,10 +263,9 @@ switch (outcome.status) {
 
 `outcome.attempts` carries the run count when the dispatch actually ran
 (retries increment it); a dedupe-joined dispatch resolves with the shared
-result but no attempts. The never-rejecting promise and the callback tiers
-(`onSuccess`/`onError`/`onSettled`) remain the canonical surface — reach for
-`.outcome` when a call site consumes the terminal state inline instead of
-wiring callbacks.
+result but no attempts. Reach for `.outcome` when a call site consumes the
+terminal state inline; the never-rejecting promise and the callback tiers
+(`onSuccess`/`onError`/`onSettled`) remain the canonical surface.
 
 ### Timeout option
 
@@ -279,23 +279,28 @@ const slow = defineAction({
 });
 ```
 
-## Unsupported by Design (SKIP list)
+## Unsupported by Design
 
 The following features are intentionally not implemented:
 
 | Feature                                | Reason                                                                                            |
 | -------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| Query caching / stale-while-revalidate | Out of paradigm — this is an action runner, not a data cache. Use TanStack Query alongside.       |
+| Query caching / stale-while-revalidate | Out of paradigm: this is an action runner, not a data cache. Use TanStack Query alongside.        |
 | Cache invalidation / revalidation      | Data-cache concern, out of scope.                                                                 |
 | Framework adapters (React/Vue/Svelte)  | Vanilla TS by design. Framework bindings belong in separate packages.                             |
 | Visual DevTools panel                  | Separate package concern. The registry API (`getActionLog`, `subscribeByName`) provides the data. |
-| SSR / hydration                        | Actions are imperative mutations — nothing to serialize across server→client.                     |
+| SSR / hydration                        | Actions are imperative mutations; nothing to serialize across server→client.                      |
 | Debounce `maxWait`                     | Deliberate simplification. Use `flush()` for guaranteed-fire semantics.                           |
 | Throttle helper                        | Not action-specific. Consumers can throttle before calling `dispatch()`.                          |
 | `condition` / pre-execution guard      | Trivially implemented by callers with `if`. `dedupe` covers the primary use case.                 |
 | `onProgress` callback                  | Transport-specific. Consumers wire progress in their `run()` implementation.                      |
 | Batch dispatch                         | Store-level concern. This library doesn't own a store.                                            |
 | `dispose()` / action deregistration    | Actions are lightweight when idle. Not a leak concern for realistic app sizes.                    |
+
+## Contributing
+
+Issues and PRs are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for the
+conventions and how to run the checks locally.
 
 ## Disclaimer
 
@@ -305,4 +310,4 @@ This project was built with AI-assisted tooling using [Claude](https://claude.co
 
 ## License
 
-GPL-3.0 — see [LICENSE](LICENSE).
+GPL-3.0-or-later. See [LICENSE](LICENSE).
