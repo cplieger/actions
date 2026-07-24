@@ -10,24 +10,26 @@ see the [fallback contributing guide](https://github.com/cplieger/.github/blob/m
 The framework is a set of small, single-purpose modules under `src/`, each
 paired with a colocated `*.test.ts`:
 
-- `define.ts` (+ `define-helpers.ts`) — `defineAction`, the lifecycle runner
+- `define.ts` (+ `define-helpers.ts`): `defineAction`, the lifecycle runner
   (optimistic → run → retry → notify → rollback). This is the core.
-- `api.ts` — `apiAction` / `configureApi`, the `fetch`-backed HTTP layer.
-- `transport.ts` — `transportAction` / `configureTransport` for SSE/streaming.
-- `notifier.ts` — `configure`, the injected success/error notification adapter.
-- `registry.ts` — the observability log plus the reactive `isPending` /
+- `api.ts`: `apiAction` / `configureApi`, the HTTP layer (a private
+  [`@cplieger/fetch`](https://github.com/cplieger/fetch) instance).
+- `transport.ts`: `transportAction` / `configureTransport` for SSE/streaming.
+- `notifier.ts`: `configure`, the injected success/error notification adapter.
+- `registry.ts`: the observability log plus the reactive `isPending` /
   `pendingCount` signals.
 - `loading.ts`, `async-feedback.ts`, `debounce.ts`, `poll.ts`,
-  `poll-until.ts`, `cleanup.ts`, `retry.ts`, `error.ts` — focused helpers.
-- `types.ts` — pure types, no imports, no runtime. Any module may depend on it.
+  `poll-until.ts`, `cleanup.ts`, `retry.ts`, `error.ts`: focused helpers.
+- `types.ts`: pure types, no imports, no runtime. Any module may depend on it.
 
-Pending-state is signal-backed via the sole runtime dependency
-[`@cplieger/reactive`](https://github.com/cplieger/reactive), so
-`bindLoadingState` is just an effect over the pending signals.
+The only runtime dependencies are
+[`@cplieger/reactive`](https://github.com/cplieger/reactive), which backs the
+pending-state signals (`bindLoadingState` is just an effect over them), and
+`@cplieger/fetch`, which `api.ts` wraps.
 
 Three adapters are injected by the consumer, never hard-wired: the notifier
 (`configure`), the HTTP layer (`configureApi`), and the streaming transport
-(`configureTransport`). Keep it that way — the library must not assume a
+(`configureTransport`). Keep it that way: the library must not assume a
 toast implementation or a fetch wrapper.
 
 ## Public API surface
@@ -39,7 +41,7 @@ toast implementation or a fetch wrapper.
 - Anything new that consumers should reach must be re-exported from
   `src/index.ts` (and `package.json` `types`/`exports` already point there).
 - Test-only helpers go through `src/testing.ts`. The old
-  `@cplieger/actions/src/*` deep-import escape hatch was removed in v2.0 — do
+  `@cplieger/actions/src/*` deep-import escape hatch was removed in v2.0; do
   not reintroduce per-module `_resetForTest` exports as a public path.
 - The README documents the API; update its `## API` list when you add,
   rename, or remove an export.
@@ -107,5 +109,5 @@ devDependency bumps use `chore(devdeps)` and are intentionally skipped.
 By participating you agree to the
 [Code of Conduct](https://github.com/cplieger/.github/blob/main/CODE_OF_CONDUCT.md).
 Report vulnerabilities through the
-[security policy](https://github.com/cplieger/.github/blob/main/SECURITY.md) —
+[security policy](https://github.com/cplieger/.github/blob/main/SECURITY.md),
 never in a public issue.
