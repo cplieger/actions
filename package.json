@@ -47,6 +47,22 @@
     "type": "git",
     "url": "git+https://github.com/cplieger/actions.git"
   },
+  "homepage": "https://github.com/cplieger/actions",
+  "bugs": {
+    "url": "https://github.com/cplieger/actions/issues"
+  },
+  "author": "cplieger <917744+cplieger@users.noreply.github.com>",
+  "keywords": [
+    "actions",
+    "async",
+    "optimistic-updates",
+    "rollback",
+    "retry",
+    "dedupe",
+    "polling",
+    "loading-state",
+    "typescript"
+  ],
   "files": [
     "src/",
     "!src/**/*.test.ts",
