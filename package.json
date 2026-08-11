@@ -38,7 +38,7 @@
     "vitest": "4.1.10"
   },
   "description": "Declarative async UI-action framework for TypeScript",
-  "license": "GPL-3.0-or-later",
+  "license": "Apache-2.0",
   "types": "./src/index.ts",
   "publishConfig": {
     "access": "public"
