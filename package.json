@@ -65,9 +65,9 @@
   ],
   "files": [
     "src/",
+    "jsr.json",
     "!src/**/*.test.ts",
-    "!src/**/__test-helpers__",
-    "!src/**/fc-strict-setup.ts",
-    "jsr.json"
+    "!src/**/*-setup.ts",
+    "!src/**/test-helpers/**"
   ]
 }

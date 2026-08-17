@@ -4,7 +4,7 @@
 // definitions from joining each other's in-flight promise (the
 // cross-definition `as TResult` type-confusion hazard).
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { resetActionFramework } from "./__test-helpers__/action-test-setup.js";
+import { resetActionFramework } from "./test-helpers/action-test-setup.js";
 vi.mock("./notifier.js", () => ({
   configure: vi.fn(),
   notifySuccess: vi.fn(),
