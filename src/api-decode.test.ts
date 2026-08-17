@@ -3,7 +3,7 @@
 // nonstandard HTTP envelopes (200-with-error bodies, meaningful non-2xx
 // bodies) that previously forced hand-rolled defineAction runners.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { resetActionFramework } from "./__test-helpers__/action-test-setup.js";
+import { resetActionFramework } from "./test-helpers/action-test-setup.js";
 vi.mock("./notifier.js", () => ({
   configure: vi.fn(),
   notifySuccess: vi.fn(),

@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 // Tests for transportAction error classification and the configureTransport seam.
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { resetActionFramework } from "./__test-helpers__/action-test-setup.js";
+import { resetActionFramework } from "./test-helpers/action-test-setup.js";
 import { configureTransport, transportAction, _resetTransportForTest } from "./transport.js";
 import { recentLog } from "./registry.js";
 
