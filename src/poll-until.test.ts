@@ -301,3 +301,81 @@ describe("pollUntil — callback safety", () => {
     expect(onTransientError).not.toHaveBeenCalled();
   });
 });
+
+describe("pollUntil — wait-timer hygiene", () => {
+  it("clears the pending wait timer when the signal aborts", async () => {
+    vi.useFakeTimers();
+    const ac = new AbortController();
+    const step = vi.fn(async () => ({ ok: true }));
+
+    const p = pollUntil(step, {
+      intervalMs: 5000,
+      until: (r) => r.ok,
+      signal: ac.signal,
+    });
+
+    await vi.advanceTimersByTimeAsync(0);
+    expect(vi.getTimerCount()).toBe(1);
+
+    ac.abort();
+    await expect(p).resolves.toEqual({ status: "aborted" });
+    expect(vi.getTimerCount()).toBe(0);
+    expect(step).not.toHaveBeenCalled();
+  });
+
+  it("does not wait out another interval when a callback aborts the poll", async () => {
+    vi.useFakeTimers();
+    const ac = new AbortController();
+    const step = vi.fn(async () => ({ ok: false }));
+
+    const p = pollUntil(step, {
+      intervalMs: 5000,
+      until: (r) => r.ok,
+      signal: ac.signal,
+      onPoll: () => {
+        ac.abort();
+      },
+    });
+
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(step).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(0);
+    await expect(p).resolves.toEqual({ status: "aborted" });
+  });
+});
+
+describe("pollUntil — budget edges", () => {
+  it("treats maxAttempts: 0 as unlimited", async () => {
+    vi.useFakeTimers();
+    let n = 0;
+    const step = vi.fn(async () => ({ n: ++n }));
+
+    const p = pollUntil(step, {
+      intervalMs: 100,
+      maxAttempts: 0,
+      until: (r) => r.n >= 3,
+    });
+
+    await vi.advanceTimersByTimeAsync(100);
+    await vi.advanceTimersByTimeAsync(100);
+    await vi.advanceTimersByTimeAsync(100);
+
+    await expect(p).resolves.toEqual({ status: "done", result: { n: 3 } });
+    expect(step).toHaveBeenCalledTimes(3);
+  });
+
+  it("times out when the elapsed time exactly reaches the deadline", async () => {
+    vi.useFakeTimers();
+    const step = vi.fn(async () => ({ ok: false }));
+
+    const p = pollUntil(step, {
+      intervalMs: 100,
+      timeoutMs: 100,
+      until: (r) => r.ok,
+    });
+
+    await vi.advanceTimersByTimeAsync(100); // t=100, elapsed 100 === the deadline
+    expect(step).not.toHaveBeenCalled();
+    await expect(p).resolves.toEqual({ status: "timeout" });
+  });
+});

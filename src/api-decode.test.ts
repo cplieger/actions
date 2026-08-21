@@ -11,6 +11,7 @@ vi.mock("./notifier.js", () => ({
   _resetNotifierForTest: vi.fn(),
 }));
 import { apiAction } from "./api.js";
+import type { ApiErrorInfo } from "./api.js";
 import { ActionError, hasErrorString } from "./error.js";
 import { notifyError, notifySuccess } from "./notifier.js";
 import { recentLog } from "./registry.js";
@@ -187,5 +188,79 @@ describe("apiAction decodeError (non-2xx reinterpretation)", () => {
     await h;
     expect(decodeError).not.toHaveBeenCalled();
     expect(recentLog()[0]?.status).toBe("cancelled");
+  });
+});
+
+describe("apiAction decodeError — the info the hook receives", () => {
+  it("carries the status, message, server code, body and headers of the failed response", async () => {
+    mockFetch.mockResolvedValue(
+      new Response(JSON.stringify({ error: "nope", code: "conflict" }), {
+        status: 409,
+        headers: { "X-Trace": "t1" },
+      }),
+    );
+    let seen: ApiErrorInfo | undefined;
+    const action = apiAction<void, void>({
+      name: "decode.info_shape",
+      request: () => ({ method: "GET", path: "/api/x" }),
+      error: false,
+      decodeError: (info) => {
+        seen = info;
+        return undefined;
+      },
+    });
+    await action.dispatch();
+    expect(seen?.status).toBe(409);
+    expect(seen?.message).toBe("nope");
+    expect(seen?.code).toBe("conflict");
+    expect(seen?.body).toEqual({ error: "nope", code: "conflict" });
+    expect((seen?.headers as Headers | undefined)?.get("X-Trace")).toBe("t1");
+    expect(Object.keys(seen ?? {}).sort()).toEqual([
+      "body",
+      "code",
+      "headers",
+      "message",
+      "status",
+    ]);
+  });
+
+  it("omits the optional fields the response did not supply", async () => {
+    mockFetch.mockResolvedValue(new Response(null, { status: 500 }));
+    let seen: ApiErrorInfo | undefined;
+    const action = apiAction<void, void>({
+      name: "decode.info_sparse",
+      request: () => ({ method: "GET", path: "/api/x" }),
+      error: false,
+      decodeError: (info) => {
+        seen = info;
+        return undefined;
+      },
+    });
+    await action.dispatch();
+    expect(Object.keys(seen ?? {}).sort()).toEqual(["headers", "message", "status"]);
+  });
+});
+
+describe("apiAction decodeError — normalizing a plain error object", () => {
+  it("carries status, code and cause onto the thrown ActionError", async () => {
+    mockFetch.mockResolvedValue(
+      new Response(JSON.stringify({ error: "gateway" }), { status: 502 }),
+    );
+    const cause = new Error("socket reset");
+    const action = apiAction<void, void>({
+      name: "decode.normalize_plain",
+      request: () => ({ method: "GET", path: "/api/x" }),
+      error: false,
+      decodeError: () => ({
+        kind: "error",
+        error: { message: "upstream offline", status: 503, code: "upstream", cause },
+      }),
+    });
+    await action.dispatch();
+    const err = recentLog()[0]?.error;
+    expect(err?.message).toBe("upstream offline");
+    expect(err?.status).toBe(503);
+    expect(err?.code).toBe("upstream");
+    expect(err?.cause).toBe(cause);
   });
 });

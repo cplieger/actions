@@ -383,3 +383,207 @@ describe("pollAction — cleanup integration", () => {
     expect(count).toBe(1);
   });
 });
+
+/** An action whose run() hangs until `settle()` is called, counting calls. */
+function gatedAction(name: string) {
+  let calls = 0;
+  let release!: (n: number) => void;
+  const action = defineAction<undefined, number>({
+    name,
+    run: () =>
+      new Promise<number>((r) => {
+        calls += 1;
+        release = r;
+      }),
+  });
+  return {
+    action,
+    calls: (): number => calls,
+    settle: (): void => {
+      release(1);
+    },
+  };
+}
+
+function setHidden(hidden: boolean): void {
+  Object.defineProperty(document, "hidden", { value: hidden, configurable: true });
+}
+
+describe("pollAction — timer hygiene", () => {
+  it("arms exactly one timer between polls", async () => {
+    let count = 0;
+    const action = defineAction<undefined, number>({
+      name: "test.poll.one_timer",
+      run: async () => ++count,
+    });
+
+    vi.useFakeTimers();
+    const stop = pollAction(action, undefined, { interval: 10_000 });
+    await vi.runAllTicks();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(count).toBe(1);
+    expect(vi.getTimerCount()).toBe(1);
+
+    stop();
+  });
+
+  it("replaces the armed timer when a focus refresh polls early", async () => {
+    let count = 0;
+    const action = defineAction<undefined, number>({
+      name: "test.poll.replace_timer",
+      run: async () => ++count,
+    });
+
+    vi.useFakeTimers();
+    const stop = pollAction(action, undefined, { interval: 10_000, refreshOnFocus: true });
+    await vi.runAllTicks();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(vi.getTimerCount()).toBe(1);
+
+    window.dispatchEvent(new Event("focus"));
+    await vi.runAllTicks();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(count).toBe(2);
+    // The interval timer that was already armed must be replaced, not joined.
+    expect(vi.getTimerCount()).toBe(1);
+
+    stop();
+  });
+
+  it("leaves no timer armed after stop()", async () => {
+    let count = 0;
+    const action = defineAction<undefined, number>({
+      name: "test.poll.stop_timer",
+      run: async () => ++count,
+    });
+
+    vi.useFakeTimers();
+    const stop = pollAction(action, undefined, { interval: 1000 });
+    await vi.runAllTicks();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(vi.getTimerCount()).toBe(1);
+
+    stop();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("leaves no timer armed once the tab hides", async () => {
+    let count = 0;
+    const action = defineAction<undefined, number>({
+      name: "test.poll.hide_timer",
+      run: async () => ++count,
+    });
+
+    vi.useFakeTimers();
+    const stop = pollAction(action, undefined, { interval: 1000 });
+    await vi.runAllTicks();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(vi.getTimerCount()).toBe(1);
+
+    setHidden(true);
+    document.dispatchEvent(new Event("visibilitychange"));
+    expect(vi.getTimerCount()).toBe(0);
+
+    stop();
+  });
+
+  it("does not arm the next timer when the tab hid while a poll was in flight", async () => {
+    const gated = gatedAction("test.poll.hide_midflight");
+
+    vi.useFakeTimers();
+    const stop = pollAction(gated.action, undefined, { interval: 1000 });
+    await Promise.resolve();
+    expect(gated.calls()).toBe(1);
+
+    setHidden(true);
+    document.dispatchEvent(new Event("visibilitychange"));
+
+    gated.settle();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(vi.getTimerCount()).toBe(0);
+
+    stop();
+  });
+});
+
+describe("pollAction — overlap and teardown", () => {
+  it("does not start a second poll when the tab returns while one is in flight", async () => {
+    const gated = gatedAction("test.poll.no_overlap");
+
+    vi.useFakeTimers();
+    const stop = pollAction(gated.action, undefined, { interval: 1000 });
+    await Promise.resolve();
+    expect(gated.calls()).toBe(1);
+
+    setHidden(true);
+    document.dispatchEvent(new Event("visibilitychange"));
+    setHidden(false);
+    document.dispatchEvent(new Event("visibilitychange"));
+    await Promise.resolve();
+    expect(gated.calls()).toBe(1);
+
+    gated.settle();
+    await vi.advanceTimersByTimeAsync(0);
+    stop();
+  });
+
+  it("ignores a visibilitychange to visible when it was never paused", async () => {
+    let count = 0;
+    const action = defineAction<undefined, number>({
+      name: "test.poll.spurious_visible",
+      run: async () => ++count,
+    });
+
+    vi.useFakeTimers();
+    const stop = pollAction(action, undefined, { interval: 10_000 });
+    await vi.runAllTicks();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(count).toBe(1);
+
+    document.dispatchEvent(new Event("visibilitychange"));
+    await vi.runAllTicks();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(count).toBe(1);
+
+    stop();
+  });
+
+  it("does not run onSuccess for a poll that resolves after stop()", async () => {
+    let release!: (n: number) => void;
+    const action = defineAction<undefined, number>({
+      name: "test.poll.stop_midflight",
+      run: () =>
+        new Promise<number>((r) => {
+          release = r;
+        }),
+    });
+    const onSuccess = vi.fn<(n: number) => void>();
+
+    vi.useFakeTimers();
+    const stop = pollAction(action, undefined, { interval: 1000, onSuccess });
+    await Promise.resolve();
+
+    stop();
+    release(7);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(onSuccess).not.toHaveBeenCalled();
+  });
+});
+
+describe("pollAction — hidden at start", () => {
+  it("pauseWhenHidden: false polls even when it starts hidden", async () => {
+    let count = 0;
+    const action = defineAction<undefined, number>({
+      name: "test.poll.hidden_start_unpaused",
+      run: async () => ++count,
+    });
+
+    setHidden(true);
+    vi.useFakeTimers();
+    const stop = pollAction(action, undefined, { interval: 1000, pauseWhenHidden: false });
+    await Promise.resolve();
+    expect(count).toBe(1);
+
+    stop();
+  });
+});

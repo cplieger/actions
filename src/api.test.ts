@@ -114,3 +114,74 @@ describe("apiAction", () => {
     expect(opts.body).toBe(JSON.stringify({ name: "foo" }));
   });
 });
+
+describe("apiAction — unexpected empty body warning", () => {
+  it("warns when a 200 response carries no body", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    mockFetch.mockResolvedValue(new Response(null, { status: 200 }));
+    const action = apiAction<undefined, unknown>({
+      name: "test.empty_200",
+      request: () => ({ method: "GET", path: "/api/thing" }),
+      error: "Failed",
+    });
+    await action.dispatch(undefined);
+    expect(warn).toHaveBeenCalledTimes(1);
+    warn.mockRestore();
+  });
+
+  it("does not warn on a 204, whose empty body is expected", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    mockFetch.mockResolvedValue(new Response(null, { status: 204 }));
+    const action = apiAction<undefined, unknown>({
+      name: "test.empty_204",
+      request: () => ({ method: "GET", path: "/api/thing" }),
+      error: "Failed",
+    });
+    await action.dispatch(undefined);
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it("does not warn on a DELETE, whose empty body is expected", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    mockFetch.mockResolvedValue(new Response(null, { status: 200 }));
+    const action = apiAction<undefined, unknown>({
+      name: "test.empty_delete",
+      request: () => ({ method: "DELETE", path: "/api/thing" }),
+      error: "Failed",
+    });
+    await action.dispatch(undefined);
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it("does not warn when the response carries a body", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    mockFetch.mockResolvedValue(new Response(JSON.stringify({ name: "foo" }), { status: 200 }));
+    const action = apiAction<undefined, unknown>({
+      name: "test.nonempty_200",
+      request: () => ({ method: "GET", path: "/api/thing" }),
+      error: "Failed",
+    });
+    await action.dispatch(undefined);
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+});
+
+describe("apiAction — a request that never reached the network", () => {
+  it("maps an un-encodable body to a status-less invalid error, so retryNetwork will not retry it", async () => {
+    mockFetch.mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+    const action = apiAction<undefined, unknown>({
+      name: "test.unencodable_body",
+      request: () => ({ method: "POST", path: "/api/items", body: { n: 10n } as never }),
+      error: false,
+    });
+    const result = await action.dispatch(undefined);
+    expect(result).toBeNull();
+    expect(mockFetch).not.toHaveBeenCalled();
+    const err = recentLog()[0]?.error;
+    expect(err?.code).toBe("invalid");
+    expect(err?.status).toBeUndefined();
+  });
+});

@@ -425,3 +425,37 @@ describe("configureApi — prepareHeaders returns a Headers object", () => {
     expect(headers.get("x-mutated")).toBeNull();
   });
 });
+
+describe("configureApi — Content-Type is visible to prepareHeaders", () => {
+  it("shows prepareHeaders the JSON Content-Type for a request with a body", async () => {
+    let seen: string | null = "hook did not run";
+    configureApi({
+      prepareHeaders: (headers) => {
+        seen = headers.get("Content-Type");
+      },
+    });
+    mockFetch.mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+    const action = apiAction<{ name: string }>({
+      name: "prep.sees_json_ct",
+      request: ({ name }) => ({ method: "POST", path: "/items", body: { name } }),
+    });
+    await action.dispatch({ name: "foo" });
+    expect(seen).toBe("application/json");
+  });
+
+  it("shows prepareHeaders no Content-Type for a bodyless DELETE", async () => {
+    let seen: string | null = "hook did not run";
+    configureApi({
+      prepareHeaders: (headers) => {
+        seen = headers.get("Content-Type");
+      },
+    });
+    mockFetch.mockResolvedValue(new Response(null, { status: 204 }));
+    const action = apiAction<{ id: string }>({
+      name: "prep.sees_no_ct",
+      request: ({ id }) => ({ method: "DELETE", path: `/items/${id}` }),
+    });
+    await action.dispatch({ id: "1" });
+    expect(seen).toBeNull();
+  });
+});
