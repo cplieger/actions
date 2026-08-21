@@ -115,3 +115,24 @@ describe("memory leak stress — registry log eviction", () => {
     expect(log.every((e) => e.status !== "pending")).toBe(true);
   });
 });
+
+describe("_resetForTest on live state", () => {
+  it("drops the scope chain and dedupe slot of a dispatch that never settles", () => {
+    const action = defineAction<void, string>({
+      name: "stress.reset_live",
+      scope: "never-drains",
+      dedupe: true,
+      run: () =>
+        new Promise<string>(() => {
+          /* deliberately never settles */
+        }),
+    });
+
+    void action.dispatch();
+    expect(_internalsForTest()).toEqual({ scopeChains: 1, activeDedupes: 1 });
+
+    resetDefine();
+
+    expect(_internalsForTest()).toEqual({ scopeChains: 0, activeDedupes: 0 });
+  });
+});

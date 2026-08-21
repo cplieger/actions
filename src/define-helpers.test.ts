@@ -165,3 +165,15 @@ describe("resolveNotification", () => {
     expect(resolveNotification(spec, "item", 7)).toBe("item:7");
   });
 });
+
+describe("_resetSymbols", () => {
+  it("clears the symbol map so a stale symbol cannot collide with a fresh one", () => {
+    _resetSymbols();
+    const first = Symbol("first");
+    expect(safeStringify(first)).toBe("@@sym1");
+    _resetSymbols();
+    const second = Symbol("second");
+    expect(safeStringify(second)).toBe("@@sym1");
+    expect(safeStringify(first)).toBe("@@sym2");
+  });
+});
