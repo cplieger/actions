@@ -107,6 +107,64 @@ describe("transportAction — unconfigured transport", () => {
   });
 });
 
+describe("transportAction — a successful send", () => {
+  it("resolves with the action's success outcome and does not throw", async () => {
+    mockSend.mockResolvedValue({ ok: true, status: 200 });
+    const action = testAction();
+    const result = await action.dispatch({ chatID: "c1" });
+    expect(result).toBeUndefined();
+    expect(recentLog()[0]?.status).toBe("success");
+    expect(recentLog()[0]?.error).toBeUndefined();
+  });
+});
+
+describe("transportAction — error classification defaults", () => {
+  it("reports a cancelled result as cancelled even when the signal never aborted", async () => {
+    mockSend.mockResolvedValue({ ok: false, status: 0, code: "cancelled" });
+    const action = testAction();
+    await action.dispatch({ chatID: "c1" });
+    const err = recentLog()[0]?.error;
+    expect(err?.code).toBe("cancelled");
+    expect(err?.message).toBe("cancelled");
+    expect(err?.status).toBeUndefined();
+  });
+
+  it("supplies the default timeout message when the transport sends none", async () => {
+    mockSend.mockResolvedValue({ ok: false, status: 504, code: "timeout" });
+    const action = testAction();
+    await action.dispatch({ chatID: "c1" });
+    const err = recentLog()[0]?.error;
+    expect(err?.code).toBe("timeout");
+    expect(err?.message).toBe("Request timed out");
+    expect(err?.status).toBe(504);
+  });
+
+  it("supplies the default network message when the transport sends none", async () => {
+    mockSend.mockResolvedValue({ ok: false, status: 0, code: "network" });
+    const action = testAction();
+    await action.dispatch({ chatID: "c1" });
+    const err = recentLog()[0]?.error;
+    expect(err?.code).toBe("network");
+    expect(err?.message).toBe("network error");
+    expect(err?.status).toBe(0);
+  });
+
+  it("passes a server-supplied code through on an HTTP failure", async () => {
+    mockSend.mockResolvedValue({
+      ok: false,
+      status: 422,
+      error: "name already taken",
+      code: "validation_failed",
+    });
+    const action = testAction();
+    await action.dispatch({ chatID: "c1" });
+    const err = recentLog()[0]?.error;
+    expect(err?.code).toBe("validation_failed");
+    expect(err?.message).toBe("name already taken");
+    expect(err?.status).toBe(422);
+  });
+});
+
 describe("transportAction — idempotency key", () => {
   it("adds idempotency_key to command when configured", async () => {
     mockSend.mockResolvedValue({ ok: true, status: 200 });

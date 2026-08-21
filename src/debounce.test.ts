@@ -141,3 +141,99 @@ describe("debouncedDispatch — leading", () => {
     expect(debounced.isPending()).toBe(false);
   });
 });
+
+describe("debouncedDispatch — flush() releases the timer and the pending flag", () => {
+  it("leaves no timer armed after flushing a scheduled dispatch", () => {
+    const { action, run } = makeAction();
+    const debounced = debouncedDispatch(action, { wait: 100 });
+    debounced("a");
+    expect(vi.getTimerCount()).toBe(1);
+    debounced.flush();
+    expect(vi.getTimerCount()).toBe(0);
+    expect(run).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not fire a second time when the original wait elapses", () => {
+    const { action, run } = makeAction();
+    const debounced = debouncedDispatch(action, { wait: 100 });
+    debounced("a");
+    debounced.flush();
+    vi.advanceTimersByTime(500);
+    expect(run).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not pull a later scheduled dispatch forward onto the discarded timer", () => {
+    const { action, run } = makeAction();
+    const debounced = debouncedDispatch(action, { wait: 100 });
+    debounced("a");
+    debounced.flush();
+    vi.advanceTimersByTime(50);
+    debounced("b");
+    // The timer flush() discarded would have fired here, dragging "b" 50ms early.
+    vi.advanceTimersByTime(50);
+    expect(run).toHaveBeenCalledTimes(1);
+    vi.advanceTimersByTime(50);
+    expect(run).toHaveBeenCalledTimes(2);
+    expect(run).toHaveBeenLastCalledWith("b", expect.anything(), expect.anything());
+  });
+
+  it("reports isPending() false once flushed", () => {
+    const { action } = makeAction();
+    const debounced = debouncedDispatch(action, { wait: 100 });
+    debounced("a");
+    expect(debounced.isPending()).toBe(true);
+    debounced.flush();
+    expect(debounced.isPending()).toBe(false);
+  });
+
+  it("counts as a leading-edge fire, so the next call is suppressed into the cooldown", () => {
+    const { action, run } = makeAction();
+    const debounced = debouncedDispatch(action, { wait: 100, leading: true });
+    debounced("a");
+    vi.advanceTimersByTime(100);
+    vi.advanceTimersByTime(100);
+    expect(run).toHaveBeenCalledTimes(1);
+
+    debounced.flush("f");
+    expect(run).toHaveBeenCalledTimes(2);
+
+    debounced("b");
+    // The flush restarted the quiet window, so "b" waits for the trailing edge
+    // instead of firing on a leading edge of its own.
+    expect(run).toHaveBeenCalledTimes(2);
+    expect(debounced.isPending()).toBe(true);
+
+    vi.advanceTimersByTime(100);
+    expect(run).toHaveBeenCalledTimes(3);
+    expect(run).toHaveBeenLastCalledWith("b", expect.anything(), expect.anything());
+  });
+});
+
+describe("debouncedDispatch — cancel() releases the timer and the pending flag", () => {
+  it("leaves no timer armed after cancelling a scheduled dispatch", () => {
+    const { action } = makeAction();
+    const debounced = debouncedDispatch(action, { wait: 100 });
+    debounced("a");
+    expect(vi.getTimerCount()).toBe(1);
+    debounced.cancel();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("leaves no timer armed after cancelling a leading-edge cooldown", () => {
+    const { action } = makeAction();
+    const debounced = debouncedDispatch(action, { wait: 100, leading: true });
+    debounced("a");
+    expect(vi.getTimerCount()).toBe(1);
+    debounced.cancel();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("reports isPending() false once cancelled", () => {
+    const { action } = makeAction();
+    const debounced = debouncedDispatch(action, { wait: 100 });
+    debounced("a");
+    expect(debounced.isPending()).toBe(true);
+    debounced.cancel();
+    expect(debounced.isPending()).toBe(false);
+  });
+});
