@@ -6,6 +6,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   record,
   subscribe,
+  subscribeByName,
   recentLog,
   getActionLog,
   pendingCount,
@@ -479,5 +480,56 @@ describe("in-flight leak watchdog", () => {
     // Cross-name signal correction: bulk.op lost exactly one.
     expect(pendingCount(["bulk.op"])).toBe(999);
     consoleSpy.mockRestore();
+  });
+});
+
+describe("subscribeByName — listener isolation", () => {
+  it("keeps an existing named listener attached when a second one subscribes", () => {
+    const first = vi.fn();
+    const second = vi.fn();
+    subscribeByName("chat.send", first);
+    subscribeByName("chat.send", second);
+
+    record(makeInstance({ id: "named-1", name: "chat.send" }));
+
+    expect(first).toHaveBeenCalledTimes(1);
+    expect(second).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves the remaining named listeners attached when one unsubscribes", () => {
+    const first = vi.fn();
+    const second = vi.fn();
+    const off = subscribeByName("chat.send", first);
+    subscribeByName("chat.send", second);
+    off();
+
+    record(makeInstance({ id: "named-2", name: "chat.send" }));
+
+    expect(first).not.toHaveBeenCalled();
+    expect(second).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not detach a later listener when an unsubscribe is called twice", () => {
+    const first = vi.fn();
+    const off = subscribeByName("chat.send", first);
+    off();
+    const later = vi.fn();
+    subscribeByName("chat.send", later);
+    off();
+
+    record(makeInstance({ id: "named-3", name: "chat.send" }));
+
+    expect(later).toHaveBeenCalledTimes(1);
+    expect(first).not.toHaveBeenCalled();
+  });
+
+  it("detaches named listeners on _resetForTest", () => {
+    const named = vi.fn();
+    subscribeByName("chat.send", named);
+    _resetForTest();
+
+    record(makeInstance({ id: "named-4", name: "chat.send" }));
+
+    expect(named).not.toHaveBeenCalled();
   });
 });

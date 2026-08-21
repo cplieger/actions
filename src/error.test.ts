@@ -293,3 +293,44 @@ describe("toActionError — AggregateError", () => {
     expect(result.code).toBe("aggregate");
   });
 });
+
+describe("toActionError — snapshot shape", () => {
+  it("snapshots an ActionError without inventing a cause key", () => {
+    const err = new ActionError("conflict", { status: 409, code: "conflict" });
+    expect(toActionError(err)).toStrictEqual({
+      message: "conflict",
+      status: 409,
+      code: "conflict",
+    });
+  });
+
+  it("carries the cause through when the ActionError has one", () => {
+    const inner = new Error("root");
+    const err = new ActionError("wrapped", { cause: inner });
+    expect(toActionError(err)).toStrictEqual({ message: "wrapped", cause: inner });
+  });
+
+  it("propagates a string code from a plain Error (e.g. a Node system error)", () => {
+    const err = Object.assign(new Error("no such file"), { code: "ENOENT" });
+    const result = toActionError(err);
+    expect(result.code).toBe("ENOENT");
+    expect(result.message).toBe("no such file");
+  });
+
+  it("propagates status and code from a thrown plain object", () => {
+    const result = toActionError({ message: "unavailable", status: 503, code: "backend_down" });
+    expect(result.status).toBe(503);
+    expect(result.code).toBe("backend_down");
+    expect(result.message).toBe("unavailable");
+  });
+});
+
+describe("classifyFetchError — non-abort DOMException", () => {
+  it("classifies a NetworkError DOMException as network, not timeout", () => {
+    const ac = new AbortController();
+    const result = classifyFetchError(new DOMException("dns failure", "NetworkError"), ac.signal);
+    expect(result.code).toBe("network");
+    expect(result.message).toBe("dns failure");
+    expect(result.status).toBe(0);
+  });
+});

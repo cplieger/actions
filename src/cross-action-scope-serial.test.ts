@@ -119,3 +119,60 @@ describe("cross-action scope serialization after cancel", () => {
     expect(order).toEqual(["A-start", "D-start"]);
   });
 });
+
+describe("cross-action scope serialization without cancel", () => {
+  it("keeps the lane serial for a dispatch that arrives after the head completed", async () => {
+    const order: string[] = [];
+    let resolveA!: (v: string) => void;
+    let resolveB!: (v: string) => void;
+    const actionA = defineAction<void, string>({
+      name: "test.tail_A",
+      scope: "tail",
+      run: () => {
+        order.push("A-start");
+        return new Promise<string>((r) => {
+          resolveA = r;
+        });
+      },
+    });
+    const actionB = defineAction<void, string>({
+      name: "test.tail_B",
+      scope: "tail",
+      run: () => {
+        order.push("B-start");
+        return new Promise<string>((r) => {
+          resolveB = r;
+        });
+      },
+    });
+    const actionC = defineAction<void, string>({
+      name: "test.tail_C",
+      scope: "tail",
+      run: () => {
+        order.push("C-start");
+        return Promise.resolve("C");
+      },
+    });
+
+    const pA = actionA.dispatch();
+    await Promise.resolve();
+    const pB = actionB.dispatch();
+    resolveA("A-done");
+    await pA;
+    await Promise.resolve();
+    expect(order).toEqual(["A-start", "B-start"]);
+
+    // A has finished and left the lane; C must still queue behind B.
+    const pC = actionC.dispatch();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(order).toEqual(["A-start", "B-start"]);
+
+    resolveB("B-done");
+    const [rB, rC] = await Promise.all([pB, pC]);
+    expect(rB).toBe("B-done");
+    expect(rC).toBe("C");
+    expect(order).toEqual(["A-start", "B-start", "C-start"]);
+  });
+});
