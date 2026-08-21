@@ -94,9 +94,6 @@ export function pollAction<TArgs, TResult>(
   }
 
   const onVisibility = (): void => {
-    if (typeof document === "undefined") {
-      return;
-    }
     if (document.hidden) {
       paused = true;
       if (timer !== undefined) {
