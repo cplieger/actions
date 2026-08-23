@@ -88,9 +88,11 @@ describe("bindLoadingState — focus restore when nothing holds focus", () => {
     record(instance("focus-1", "load.focus_null", "pending"));
     expect(btn.disabled).toBe(true);
 
-    // A real browser drops activeElement to null when the focused control is
-    // disabled and nothing else takes focus; happy-dom parks it on <body>
-    // instead, so force the state the guard's first arm is written for.
+    // Measured in Chromium: disabling the focused control parks activeElement on
+    // <body>, never null. So the guard's `=== null` arm is defensive cover for a
+    // non-browser engine rather than a state a browser reaches, and the only way
+    // to exercise it is to install it. Forcing an unreachable state is the point
+    // here; do not read this as a browser behaviour.
     Object.defineProperty(document, "activeElement", { value: null, configurable: true });
     focusSpy.mockClear();
 
@@ -120,9 +122,8 @@ describe("bindLoadingState — focus restore when nothing holds focus", () => {
       },
       { once: true },
     );
-    // happy-dom keeps its internal focus on the button even after it is
-    // disabled, and focus() on the already-focused element fires nothing — so
-    // park focus elsewhere first, then present the nothing-holds-focus state.
+    // focus() on the already-focused element fires nothing, so park focus
+    // elsewhere first and then present the nothing-holds-focus state.
     const sink = document.createElement("input");
     document.body.append(sink);
     sink.focus();
