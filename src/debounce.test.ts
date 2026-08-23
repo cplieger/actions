@@ -208,6 +208,61 @@ describe("debouncedDispatch — flush() releases the timer and the pending flag"
   });
 });
 
+describe("debouncedDispatch — an action whose args are undefined", () => {
+  // A no-argument action (`defineAction<undefined, …>`) is a shape this repo
+  // already uses. Its scheduled args ARE `undefined`, so "nothing coalesced"
+  // cannot be spelled with `undefined` — a call whose args are undefined is
+  // still a call, and dropping it loses the work silently.
+  function makeVoidAction() {
+    const run = vi.fn(() => Promise.resolve("ok"));
+    const action = defineAction<undefined, string>({ name: "test.debounce.void", run });
+    return { action, run };
+  }
+
+  it("dispatches a trailing call whose args are undefined", () => {
+    const { action, run } = makeVoidAction();
+    const debounced = debouncedDispatch<undefined, string>(action, { wait: 100 });
+    debounced(undefined);
+    expect(debounced.isPending()).toBe(true);
+    vi.advanceTimersByTime(100);
+    expect(run).toHaveBeenCalledTimes(1);
+    expect(debounced.isPending()).toBe(false);
+  });
+
+  it("fires the coalesced undefined-args call at the trailing edge of a leading window", () => {
+    const { action, run } = makeVoidAction();
+    const debounced = debouncedDispatch<undefined, string>(action, { wait: 100, leading: true });
+    debounced(undefined);
+    expect(run).toHaveBeenCalledTimes(1);
+    debounced(undefined);
+    expect(debounced.isPending()).toBe(true);
+    vi.advanceTimersByTime(100);
+    expect(run).toHaveBeenCalledTimes(2);
+    expect(debounced.isPending()).toBe(false);
+  });
+
+  it("flushes a pending undefined-args call", () => {
+    const { action, run } = makeVoidAction();
+    const debounced = debouncedDispatch<undefined, string>(action, { wait: 100 });
+    debounced(undefined);
+    debounced.flush();
+    expect(run).toHaveBeenCalledTimes(1);
+    expect(debounced.isPending()).toBe(false);
+  });
+
+  it("still treats a cooldown that closes on an empty queue as nothing to fire", () => {
+    const { action, run } = makeVoidAction();
+    const debounced = debouncedDispatch<undefined, string>(action, { wait: 100, leading: true });
+    debounced(undefined);
+    expect(run).toHaveBeenCalledTimes(1);
+    vi.advanceTimersByTime(100);
+    expect(run).toHaveBeenCalledTimes(1);
+    expect(debounced.isPending()).toBe(false);
+    expect(debounced.flush()).toBeUndefined();
+    expect(run).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("debouncedDispatch — cancel() releases the timer and the pending flag", () => {
   it("leaves no timer armed after cancelling a scheduled dispatch", () => {
     const { action } = makeAction();
