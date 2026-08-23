@@ -17,6 +17,24 @@ function goOffline(): void {
   Object.defineProperty(navigator, "onLine", { value: false, configurable: true });
 }
 
+/** Report how `p` settles inside a real `ms` window, without asserting anything.
+ *  A "pending" answer is what the offline arm needs pinned: a promise nothing but
+ *  an `online` event or an abort can settle is only visible by letting time pass.
+ *  At `ms` of 0 the deadline is a macrotask, which an already-resolved promise
+ *  always beats, so "resolved" there means resolved in the same turn. The
+ *  "rejected" arm is load-bearing: without it a promise that rejects at once
+ *  would read as "pending" and a hang test would pass for the wrong reason. */
+function settleWithin(p: Promise<void>, ms: number): Promise<"resolved" | "rejected" | "pending"> {
+  const deadline = new Promise<"pending">((resolve) => setTimeout(() => resolve("pending"), ms));
+  return Promise.race([
+    p.then(
+      () => "resolved" as const,
+      () => "rejected" as const,
+    ),
+    deadline,
+  ]);
+}
+
 describe("sleep — abort-listener bookkeeping", () => {
   it("registers a once-only abort listener and removes it when the timer wins", async () => {
     vi.useFakeTimers();
@@ -47,18 +65,45 @@ describe("sleep — abort-listener bookkeeping", () => {
   });
 });
 
-describe("waitForOnline — the no-navigator guard", () => {
-  it("resolves without reading navigator when there is no navigator at all", async () => {
-    // The SSR / worker shape the guard exists for: `navigator` undefined, so
-    // reading `.onLine` would throw rather than answer "assume online".
+describe("waitForOnline — only a positive offline report waits", () => {
+  it("resolves when there is no navigator at all", async () => {
+    // Kept because the read still has to be null-safe, but NOT because any
+    // runtime is shaped this way: the comment this replaces called it "the SSR /
+    // worker shape the guard exists for" and neither shape qualifies. Node has
+    // had a `navigator` since v21 and a Web Worker has `WorkerNavigator` with a
+    // real `onLine`. Only a stub reaches this arm.
     vi.stubGlobal("navigator", undefined);
     const ac = new AbortController();
-    await expect(waitForOnline(ac.signal)).resolves.toBeUndefined();
+    expect(await settleWithin(waitForOnline(ac.signal), 0)).toBe("resolved");
   });
 
-  it("resolves immediately when navigator reports online", async () => {
+  it("resolves when navigator carries no onLine property, which is Node's real shape", async () => {
+    // The shape the defect lived in, and the reason the guard reads `onLine`
+    // instead of testing for `navigator`. `onLine` is `undefined` here, which a
+    // truthiness test reads as offline — and the offline arm then waits for an
+    // `online` event Node has no `window` to deliver, so the promise could only
+    // ever settle by abort. Any retrying action stalled on its first retry.
+    vi.stubGlobal("navigator", {});
     const ac = new AbortController();
-    await expect(waitForOnline(ac.signal)).resolves.toBeUndefined();
+    expect(await settleWithin(waitForOnline(ac.signal), 0)).toBe("resolved");
+  });
+
+  it("resolves immediately when the real navigator reports online", async () => {
+    const ac = new AbortController();
+    expect(await settleWithin(waitForOnline(ac.signal), 0)).toBe("resolved");
+  });
+
+  it("keeps waiting while navigator positively reports offline", async () => {
+    vi.stubGlobal("navigator", { onLine: false });
+    const ac = new AbortController();
+    const waiting = waitForOnline(ac.signal);
+
+    // A real window rather than the macrotask boundary above: the claim is that
+    // nothing settles this promise on its own, and only elapsed time shows that.
+    expect(await settleWithin(waiting, 50)).toBe("pending");
+
+    ac.abort();
+    await expect(waiting).rejects.toThrow(/aborted/);
   });
 });
 
