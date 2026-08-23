@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 // Model-based property test for registry pending accounting. Drives arbitrary
 // record() sequences and checks the pending invariants the table tests only
 // spot-check: pendingCount() never goes negative, matches a last-status model

@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 import { describe, it, expect, vi, beforeEach } from "vitest";
 vi.mock("./notifier.js", () => ({
   configure: vi.fn(),

@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 // Tests for the public ./testing subpath — verifies resetActionFramework()
 // clears every state slot (define, registry, cleanup, api, transport, notifier).
 import { describe, it, expect, vi, beforeEach } from "vitest";

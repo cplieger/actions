@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 // The two error paths that bypass run(): an optimistic() that throws, and an
 // error-notification formatter that throws. Plus the retry button's args
 // handling for a throwable that structuredClone refuses to copy.

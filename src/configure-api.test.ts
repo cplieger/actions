@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 // Tests for the configureApi HTTP-customization seam.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 

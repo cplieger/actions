@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 // Cancellation bookkeeping: every cancelled dispatch settles exactly once, is
 // recorded exactly once, and a dispatch cancelled before it starts applies no
 // optimistic update. The scope-queued paths are the ones with two competing

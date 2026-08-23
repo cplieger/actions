@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 // Notifier unwired-slot policy: unconfigured drops warn once (the
 // silent-by-default footgun); an explicit configure() — even an empty or
 // partial one — is the documented headless opt-in and stays silent.

@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 // Dedupe semantics on the cancelled paths: a joiner must inherit the primary's
 // cancellation rather than the "deduped dispatch did not succeed" fallback, on
 // both shapes of cancel (the run rejects on abort, and the run completes

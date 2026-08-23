@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 // The beforeunload wiring in cleanup.ts. cleanup.test.ts drives the sweep
 // through the _cancelAllForTest() back door, which never proves the listener is
 // actually installed on window — the whole point of the module in production.

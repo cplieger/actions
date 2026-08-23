@@ -1,7 +1,12 @@
-// pollAction outside a browser. Default (node) environment on purpose:
-// `document` and `window` are undefined here, which is what the typeof guards
-// around the visibilitychange / focus listener registration exist for. A
-// happy-dom test can never reach those branches, so nothing else pins them.
+// pollAction outside a browser.
+//
+// The `.node.test.ts` suffix is what puts this file in the node project, and it
+// is load-bearing: `document` and `window` must be UNDEFINED here, which is what
+// the typeof guards around the visibilitychange / focus listener registration
+// exist for. Every sibling test runs in a real Chromium where those globals
+// always exist, so those branches are unreachable there and nothing else pins
+// them. Moved into the browser project this file would not fail; it would pass
+// vacuously, having taken the arm it was written to avoid.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 vi.mock("./notifier.js", () => ({

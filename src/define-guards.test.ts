@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 // Definition-time guards: the duplicate-name diagnostic and the
 // per-definition dedupe-key identity that prevents two same-named
 // definitions from joining each other's in-flight promise (the

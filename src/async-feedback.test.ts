@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 // Tests for withAsyncFeedback — adapted from vibekit's async-button.test.ts,
 // plus coverage for the injectable-glyph generalization.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
@@ -433,19 +432,6 @@ describe("withAsyncFeedback — focus restore", () => {
     vi.useRealTimers();
   });
 
-  // happy-dom does not blur an element when it becomes disabled, and ignores
-  // blur() on a disabled element — unlike a real browser, which drops focus to
-  // <body> the moment the button is disabled. Emulate that drop by parking
-  // focus on a throwaway enabled input and blurring it, which lands
-  // document.activeElement at null (one of the states the guard restores from).
-  function dropFocus(): void {
-    const sink = document.createElement("input");
-    document.body.appendChild(sink);
-    sink.focus();
-    sink.blur();
-    sink.remove();
-  }
-
   // A keyboard user activates the button; disabling it during the async cycle
   // drops focus away from it. When the timed reset re-enables the button,
   // focus must return so the user does not lose their place.
@@ -460,8 +446,9 @@ describe("withAsyncFeedback — focus restore", () => {
     });
     const promise = withAsyncFeedback(btn, () => work);
 
-    // Simulate the disable dropping focus off the button.
-    dropFocus();
+    // withAsyncFeedback disabled the button, and the browser drops focus off a
+    // disabled element by itself, so this asserts real behavior rather than a
+    // simulation of it.
     expect(document.activeElement).not.toBe(btn);
 
     resolveFn!();
@@ -488,7 +475,6 @@ describe("withAsyncFeedback — focus restore", () => {
     });
     const promise = withAsyncFeedback(btn, () => work, { resetMs: 0 });
 
-    dropFocus();
     expect(document.activeElement).not.toBe(btn);
 
     resolveFn!();

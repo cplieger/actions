@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 // Tests for pollAction.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
