@@ -299,16 +299,24 @@ export function defineAction<TArgs, TResult, TOp = unknown>(
       result = Promise.race([next, earlyCancel]);
     }
 
-    if (dedupeKey !== null && dedupeEntry !== null) {
+    // A dedupe slot must describe a dispatch that is still running. runOnce is
+    // called synchronously above, and its optimistic-failure and
+    // aborted-before-start paths settle without ever awaiting — those have
+    // already recorded, fired their callbacks and left `inFlight`, so
+    // publishing a slot for them would hand the next dispatch of the same key
+    // a finished dispatch's error instead of letting it work.
+    if (dedupeKey !== null && dedupeEntry !== null && inFlight.has(id)) {
       dedupeEntry.promise = result;
       activeDedupes.set(dedupeKey, dedupeEntry);
       activeDedupeKeys.add(dedupeKey);
-      void result.finally(() => {
-        if (activeDedupes.get(dedupeKey) === dedupeEntry) {
-          activeDedupes.delete(dedupeKey);
-          activeDedupeKeys.delete(dedupeKey);
-        }
-      });
+      void result
+        .finally(() => {
+          if (activeDedupes.get(dedupeKey) === dedupeEntry) {
+            activeDedupes.delete(dedupeKey);
+            activeDedupeKeys.delete(dedupeKey);
+          }
+        })
+        .catch(NOOP);
     }
 
     return makeHandle(

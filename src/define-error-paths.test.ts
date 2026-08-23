@@ -8,7 +8,7 @@ vi.mock("./notifier.js", () => ({
   notifyError: vi.fn(),
   _resetNotifierForTest: vi.fn(),
 }));
-import { defineAction, _resetForTest as resetDefine } from "./define.js";
+import { defineAction, _resetForTest as resetDefine, _internalsForTest } from "./define.js";
 import { _resetForTest as resetRegistry } from "./registry.js";
 import { _resetForTest as resetCleanup } from "./cleanup.js";
 import { ActionError, retryNetwork } from "./error.js";
@@ -97,6 +97,63 @@ describe("error notification formatter throws", () => {
       "Delete failed: server said no",
       undefined,
     );
+  });
+});
+
+describe("a thrown value that makes toActionError itself throw", () => {
+  // toActionError (error.ts) reads `e.message`, so a throwable with a throwing
+  // message getter makes runOnce REJECT — the one hole in dispatch()'s
+  // resolve-never-reject contract. The caller can handle the handle's
+  // rejection; a derived promise dispatch() creates for its own bookkeeping
+  // cannot be handled by anyone, so it must not be left unguarded.
+  it("rejects only the caller's handle, never an unhandled promise", async () => {
+    const boom = new Error("message getter exploded");
+    const hostile = new ActionError("placeholder");
+    Object.defineProperty(hostile, "message", {
+      configurable: true,
+      get: (): string => {
+        throw boom;
+      },
+    });
+
+    const unhandled: unknown[] = [];
+    const onUnhandled = (e: PromiseRejectionEvent): void => {
+      unhandled.push(e.reason);
+    };
+    window.addEventListener("unhandledrejection", onUnhandled);
+    try {
+      let calls = 0;
+      const action = defineAction<{ id: string }, string>({
+        name: "toactionerror.throws",
+        dedupe: true,
+        error: false,
+        run: () => (calls++ === 0 ? Promise.reject(hostile) : Promise.resolve("recovered")),
+      });
+
+      let caught: unknown;
+      await action.dispatch({ id: "a" }).catch((e: unknown) => {
+        caught = e;
+      });
+      expect(caught).toBe(boom);
+
+      // Two macrotask turns: a rejection is reported as unhandled at the end of
+      // the turn in which it stayed without a handler.
+      await new Promise((r) => {
+        setTimeout(r, 0);
+      });
+      await new Promise((r) => {
+        setTimeout(r, 0);
+      });
+      expect(unhandled).toEqual([]);
+
+      // The rejection escaped before runOnce's own dedupe eviction, so the
+      // post-settle backstop is what releases the slot. Without that release
+      // every later dispatch of this key would join a rejected promise forever.
+      expect(_internalsForTest().activeDedupes).toBe(0);
+      await expect(action.dispatch({ id: "a" })).resolves.toBe("recovered");
+    } finally {
+      window.removeEventListener("unhandledrejection", onUnhandled);
+    }
   });
 });
 
