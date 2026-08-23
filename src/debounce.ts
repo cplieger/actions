@@ -5,6 +5,11 @@
 
 import type { Action } from "./types.js";
 
+/** "Nothing is coalesced" marker. A no-argument action's args ARE `undefined`,
+ *  so `undefined` cannot double as the empty state: this sentinel is
+ *  module-private and therefore not forgeable as a TArgs value. */
+const NO_ARGS = Symbol("debounce.noArgs");
+
 /** A debounced action dispatcher. Callable to schedule a dispatch,
  *  with `flush`, `cancel`, and `isPending` control methods. */
 export interface DebouncedDispatch<TArgs> {
@@ -40,7 +45,7 @@ export function debouncedDispatch<TArgs, TResult>(
   opts: DebounceOptions,
 ): DebouncedDispatch<TArgs> {
   let timer: ReturnType<typeof setTimeout> | undefined;
-  let lastArgs: TArgs | undefined;
+  let lastArgs: TArgs | typeof NO_ARGS = NO_ARGS;
   let pending = false;
   let lastFiredAt = 0;
 
@@ -58,7 +63,7 @@ export function debouncedDispatch<TArgs, TResult>(
       }
       void action.dispatch(args);
       lastFiredAt = now;
-      lastArgs = undefined;
+      lastArgs = NO_ARGS;
       // Nothing is scheduled after a leading-edge fire — the timer below is a
       // cooldown re-arm, not a pending dispatch — so isPending() reads false
       // until a call lands inside the quiet window (doc contract above).
@@ -78,8 +83,8 @@ export function debouncedDispatch<TArgs, TResult>(
       timer = undefined;
       pending = false;
       const a = lastArgs;
-      lastArgs = undefined;
-      if (a !== undefined) {
+      lastArgs = NO_ARGS;
+      if (a !== NO_ARGS) {
         void action.dispatch(a);
       }
     }, opts.wait);
@@ -88,8 +93,8 @@ export function debouncedDispatch<TArgs, TResult>(
   function fireTrailing(): void {
     timer = undefined;
     const a = lastArgs;
-    lastArgs = undefined;
-    if (a !== undefined) {
+    lastArgs = NO_ARGS;
+    if (a !== NO_ARGS) {
       lastFiredAt = Date.now();
       // The coalesced args fire now; the re-armed timer is a cooldown window
       // with nothing scheduled in it yet, so isPending() reads false.
@@ -107,9 +112,9 @@ export function debouncedDispatch<TArgs, TResult>(
       timer = undefined;
     }
     const a = args ?? lastArgs;
-    lastArgs = undefined;
+    lastArgs = NO_ARGS;
     pending = false;
-    if (a !== undefined) {
+    if (a !== NO_ARGS) {
       if (opts.leading === true) {
         lastFiredAt = Date.now();
       }
@@ -123,7 +128,7 @@ export function debouncedDispatch<TArgs, TResult>(
       clearTimeout(timer);
       timer = undefined;
     }
-    lastArgs = undefined;
+    lastArgs = NO_ARGS;
     pending = false;
   };
 
