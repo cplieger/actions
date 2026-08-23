@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 // Two rules in registry.ts's listener plumbing that the existing suite covers
 // but does not distinguish: a throwing NAME-SCOPED listener has to be reported
 // (the all-listeners loop is the one already asserted), and the identity guard

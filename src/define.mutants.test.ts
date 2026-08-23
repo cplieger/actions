@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 // Interaction rules between defineAction's features that the rest of the suite
 // exercises but does not pin: WHEN the dedupe slot is released relative to the
 // terminal callbacks (so a retry dispatched from onError/onSettled is real work

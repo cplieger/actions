@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 // Timing-boundary and teardown-bookkeeping rules that pollAction states but
 // the rest of the suite does not pin: `backoffOnError.max` bounds a BACKED-OFF
 // delay only — it must never shorten the quiet window between healthy polls —

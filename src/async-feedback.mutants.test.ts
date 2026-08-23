@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 // The first arm of withAsyncFeedback's focus-restore guard. The existing focus
 // tests reach the `activeElement === document.body` arm (happy-dom parks focus
 // on <body> when an element blurs); the `activeElement === null` arm — what a

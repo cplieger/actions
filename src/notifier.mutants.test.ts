@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 // The unconfigured-drop warning fires once per process, so whichever channel
 // drops FIRST is the one that has to raise it. The existing suite always drops
 // a success notification first, which leaves the error channel's own call
