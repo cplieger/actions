@@ -1,8 +1,9 @@
 // The first arm of withAsyncFeedback's focus-restore guard. The existing focus
-// tests reach the `activeElement === document.body` arm (happy-dom parks focus
-// on <body> when an element blurs); the `activeElement === null` arm — what a
-// real browser leaves behind when the focused control is disabled and nothing
-// else claims focus — is the one still unasserted.
+// tests reach the `activeElement === document.body` arm, which is what every
+// engine measured here actually produces when a focused element blurs or is
+// disabled. The `activeElement === null` arm is defensive cover for a
+// non-browser engine: Chromium never yields null, so the arm is unreachable in a
+// browser and this file installs the state in order to assert it at all.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 import { withAsyncFeedback } from "./async-feedback.js";
