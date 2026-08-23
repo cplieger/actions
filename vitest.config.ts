@@ -33,8 +33,18 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   test: {
+    // `extends: true` on every project is REQUIRED, not decorative: a project
+    // inherits NOTHING from the block below without it, and losing a strictness
+    // option (expect.requireAssertions, allowOnly, mockReset, unstubGlobals, the
+    // timeouts) never fails a test, so the suite would go green while the bar
+    // dropped. It is a SIBLING of `test`, not a key inside it: spelled
+    // `test: { extends: true }` it type-checks, runs, and inherits nothing.
+    // Verified the only way that means anything, by dropping a zero-assertion
+    // probe test into each project: with `extends: true` both FAIL under
+    // requireAssertions, and with the key moved inside `test` both PASS.
     projects: [
       {
+        extends: true,
         test: {
           name: "node",
           environment: "node",
@@ -42,6 +52,7 @@ export default defineConfig({
         },
       },
       {
+        extends: true,
         test: {
           name: "browser",
           include: ["src/**/*.test.ts"],
@@ -63,5 +74,46 @@ export default defineConfig({
         },
       },
     ],
+    // No `include` at this level. `extends: true` MERGES array options, so a
+    // root include would leak into the node project and make it collect every
+    // browser test; each project declares its own.
+    passWithNoTests: false,
+    allowOnly: false,
+    globals: false,
+    expect: {
+      requireAssertions: true,
+    },
+    // clearMocks: call history. mockReset: history + implementations.
+    // restoreMocks: vi.spyOn originals. unstubEnvs/unstubGlobals: vi.stubEnv
+    // and vi.stubGlobal. Together they stop one test's double reaching the next.
+    clearMocks: true,
+    mockReset: true,
+    restoreMocks: true,
+    unstubEnvs: true,
+    unstubGlobals: true,
+    bail: process.env["CI"] ? 1 : 0,
+    testTimeout: 5000,
+    hookTimeout: 10000,
+    // Root-only in vitest 4: a per-project slowTestThreshold is not read.
+    slowTestThreshold: 300,
+    sequence: {
+      shuffle: { files: false, tests: false },
+      concurrent: false,
+      hooks: "stack",
+    },
+    printConsoleTrace: true,
+    expandSnapshotDiff: true,
+    coverage: {
+      provider: "v8",
+      include: ["src/**/*.ts"],
+      exclude: ["src/**/*.test.ts", "src/**/*.d.ts", "src/test-helpers/**"],
+      reportOnFailure: true,
+      reporter: ["text", "text-summary", "lcov"],
+    },
+    chaiConfig: {
+      truncateThreshold: 0,
+      showDiff: true,
+      includeStack: true,
+    },
   },
 });

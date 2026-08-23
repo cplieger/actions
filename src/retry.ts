@@ -25,9 +25,23 @@ export function sleep(ms: number, signal: AbortSignal): Promise<void> {
   });
 }
 
-/** Wait for the browser to come back online, or for the signal to abort. */
+/** Wait for the browser to come back online, or for the signal to abort.
+ *  Resolves immediately unless the platform positively reports being offline. */
 export function waitForOnline(signal: AbortSignal): Promise<void> {
-  if (typeof navigator === "undefined" || navigator.onLine) {
+  // Only WAIT when the platform positively says offline. An absent `onLine` is not
+  // evidence of a disconnection, and reading it off the object rather than testing
+  // for the object is what makes that true in every runtime: Node ships a
+  // `Navigator` with no `onLine`, so a `typeof navigator` test answers "assume
+  // offline" and then registers no `online` listener, because there is no `window`
+  // to register it on. The promise could only settle by abort.
+  //
+  // The nullable type on the read is load-bearing rather than decorative. The DOM
+  // lib declares `navigator` always present and `onLine` a plain `boolean`, which
+  // is true of a browser and of nothing else; read through that type the compiler
+  // proves this check dead and the lint offers to delete the one guard the
+  // non-browser runtimes need.
+  const onLine = (globalThis as { readonly navigator?: Navigator }).navigator?.onLine;
+  if (onLine !== false) {
     return Promise.resolve();
   }
   if (signal.aborted) {
