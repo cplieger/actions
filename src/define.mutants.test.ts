@@ -300,12 +300,14 @@ describe("a scope-queued dispatch aborted before it starts", () => {
 });
 
 describe("a dispatch that fails in optimistic() before its dedupe slot is published", () => {
-  it("hands the same failure to a duplicate dispatched in the same tick", async () => {
+  it("runs a duplicate dispatched in the same tick instead of joining the dead dispatch", async () => {
+    let snapshots = 0;
     const action = defineAction<{ id: string }, string, string>({
       name: "optimistic.same_tick_duplicate",
       dedupe: true,
       error: false,
       optimistic: () => {
+        snapshots += 1;
         throw new ActionError("snapshot failed", { code: "quota_exceeded" });
       },
       run: () => Promise.resolve("unreachable"),
@@ -319,7 +321,43 @@ describe("a dispatch that fails in optimistic() before its dedupe slot is publis
       error: { message: "snapshot failed", code: "quota_exceeded" },
     };
     await expect(first.outcome).resolves.toEqual(failure);
+    // The same failure, but reached by doing its own work: the first dispatch
+    // had already settled, so there was no in-flight dispatch to join.
     await expect(duplicate.outcome).resolves.toEqual(failure);
+    expect(snapshots).toBe(2);
+    expect(recentLog().filter((e) => e.name === "optimistic.same_tick_duplicate")).toHaveLength(2);
+  });
+
+  it("does not hand its failure to a duplicate that would have succeeded", async () => {
+    const runs: string[] = [];
+    let snapshots = 0;
+    const action = defineAction<{ id: string }, string, string>({
+      name: "optimistic.duplicate_does_its_own_work",
+      dedupe: true,
+      error: false,
+      optimistic: () => {
+        snapshots += 1;
+        if (snapshots === 1) {
+          throw new ActionError("snapshot failed");
+        }
+        return "snap";
+      },
+      run: () => {
+        runs.push("ran");
+        return Promise.resolve("ok");
+      },
+    });
+
+    const first = action.dispatch({ id: "a" });
+    const duplicate = action.dispatch({ id: "a" });
+
+    await expect(first.outcome).resolves.toMatchObject({ status: "error" });
+    await expect(duplicate.outcome).resolves.toEqual({
+      status: "success",
+      value: "ok",
+      attempts: 1,
+    });
+    expect(runs).toEqual(["ran"]);
   });
 
   it("releases that dedupe key once its promise settles, so the next dispatch runs", async () => {
@@ -353,7 +391,7 @@ describe("a dispatch that fails in optimistic() before its dedupe slot is publis
     expect(runs).toHaveLength(1);
   });
 
-  it("keeps that pending slot when cancel() runs with nothing in flight", async () => {
+  it("runs the same-tick duplicate even after cancel() finds nothing in flight", async () => {
     let snapshots = 0;
     const action = defineAction<{ id: string }, string, string>({
       name: "optimistic.idle_cancel",
@@ -367,8 +405,9 @@ describe("a dispatch that fails in optimistic() before its dedupe slot is publis
     });
 
     action.dispatch({ id: "a" });
-    // Nothing is in flight: the optimistic failure settled synchronously.
-    // cancel() must change no state, so the same-tick duplicate still joins.
+    // Nothing is in flight: the optimistic failure settled synchronously, and it
+    // published no dedupe slot. cancel() has nothing to change, and the
+    // same-tick duplicate is a dispatch of its own.
     action.cancel();
     const duplicate = action.dispatch({ id: "a" });
 
@@ -376,7 +415,7 @@ describe("a dispatch that fails in optimistic() before its dedupe slot is publis
       status: "error",
       error: { message: "snapshot failed" },
     });
-    expect(snapshots).toBe(1);
+    expect(snapshots).toBe(2);
   });
 });
 
