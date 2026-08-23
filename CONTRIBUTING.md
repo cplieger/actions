@@ -81,9 +81,21 @@ declaration emit and is not published.
   `resetActionFramework()` from `@cplieger/actions/testing` in `beforeEach`,
   since module singletons (registry, notifier, api/transport config) persist
   otherwise.
-- **Property and DOM tests.** `fast-check` drives property tests and
-  `happy-dom` backs the DOM helpers (`loading`, `async-feedback`); keep new
-  invariant-style coverage in that idiom where it fits.
+- **A test runs in a real headless Chromium unless its name opts out.** The
+  opt-out is the `.node.test.ts` suffix, which puts a file in the `node`
+  project. Use it only for a test that genuinely needs Node: one that reads a
+  fixture off disk, or one whose subject is the ABSENCE of browser globals.
+  `poll-no-dom.node.test.ts` is the second kind, and it is the reason the suffix
+  is a filename rather than a list in `vitest.config.ts`: a fixture reader that
+  lands in the browser throws on its `node:` import and fixes itself, while a
+  DOM-absence test passes vacuously, having exercised the arm it was written to
+  avoid. Put the reason in the stem and the placement in the suffix.
+- **Do not simulate what the browser does.** A disabled element loses focus to
+  `<body>` on its own, transitions really fire, and boxes really have size.
+  Assert the behavior; helpers that faked it under the previous DOM emulator
+  have been removed.
+- **Property tests.** `fast-check` drives the invariant-style coverage; keep new
+  invariants in that idiom where they fit.
 - **Don't edit `.github/workflows/*`.** `ci.yaml` and `release.yaml` are
   synced from `cplieger/ci` and marked DO NOT EDIT; behavior changes belong
   upstream.

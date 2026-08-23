@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 // Cross-cycle bookkeeping for withAsyncFeedback: the live region is created
 // once, a fresh cycle cancels the previous cycle's pending reset, the reset
 // never touches a button that left the DOM, and a button removed mid-flight

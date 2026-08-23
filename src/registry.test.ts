@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 // Targeted tests for registry.ts: bounded settled retention, in-flight
 // protection, Set-based listener iteration, pendingCount/recentLog
 // correctness, the transition-table edges, the leak watchdog, _resetForTest.

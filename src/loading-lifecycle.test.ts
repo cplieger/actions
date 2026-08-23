@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 // bindLoadingState lifecycle: the option defaults, the disabledFn seam, the
 // detach auto-dispose path, focus restoration, and what the returned disposer
 // is allowed to touch. loading.test.ts covers the pending/idle toggle with
@@ -46,12 +45,16 @@ function attachedButton(): HTMLButtonElement {
 }
 
 /**
- * Drop focus to document.body. A real browser does this by itself when the
- * focused element becomes disabled; happy-dom leaves activeElement on the
- * disabled element, so the idle path's `active === document.body` branch is
- * only reachable if the test drops focus the way a browser would.
+ * Park focus on <body> as a START state.
+ *
+ * Not needed to simulate a disable any more: bindLoadingState sets
+ * `el.disabled = true` while pending and the browser drops focus off a disabled
+ * element by itself, so a test that dispatches first can assert that directly.
+ * This is only for a test whose premise is "the element never had focus", where
+ * a sibling test in the same file may have left focus elsewhere -- Browser Mode
+ * gives each FILE its own page, not each test.
  */
-function dropFocusToBody(): void {
+function parkFocusOnBody(): void {
   const sink = document.createElement("button");
   document.body.appendChild(sink);
   sink.focus();
@@ -233,7 +236,8 @@ describe("bindLoadingState — focus restoration", () => {
     btn.focus();
     bindLoadingState("load.focus_back", btn);
     const p = action.dispatch({});
-    dropFocusToBody();
+    // The dispatch disabled the element and the browser dropped focus to
+    // <body> on its own; that is the state under test, not a simulated one.
     expect(document.activeElement).toBe(document.body);
     settle();
     await p;
@@ -257,7 +261,7 @@ describe("bindLoadingState — focus restoration", () => {
   it("does not focus an element that never had focus", async () => {
     const { action, settle } = controllable("load.focus_never");
     const btn = attachedButton();
-    dropFocusToBody();
+    parkFocusOnBody();
     bindLoadingState("load.focus_never", btn);
     const p = action.dispatch({});
     settle();
@@ -271,7 +275,6 @@ describe("bindLoadingState — focus restoration", () => {
     btn.focus();
     const unbind = bindLoadingState("load.focus_detached", btn);
     const p = action.dispatch({});
-    dropFocusToBody();
     btn.remove();
     unbind();
     expect(document.activeElement).toBe(document.body);

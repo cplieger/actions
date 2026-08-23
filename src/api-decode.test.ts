@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 // apiAction decode / decodeError hooks: the response-interpretation seam for
 // nonstandard HTTP envelopes (200-with-error bodies, meaningful non-2xx
 // bodies) that previously forced hand-rolled defineAction runners.

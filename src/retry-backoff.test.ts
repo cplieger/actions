@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 // Retry policy: the exponential backoff schedule, the attempt count recorded
 // on every terminal registry entry, and the two fail-closed edges (a throwing
 // `retryable` predicate, and a signal already aborted at the top of the loop).

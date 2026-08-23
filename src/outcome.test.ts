@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 // DispatchHandle.outcome: the opt-in typed terminal accessor. Verifies the
 // three-way discrimination (success / error / cancelled) on every terminal
 // path — run, retry, optimistic failure, abort, scope early-cancel, and the
