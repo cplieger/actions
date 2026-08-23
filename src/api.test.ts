@@ -168,6 +168,50 @@ describe("apiAction — unexpected empty body warning", () => {
   });
 });
 
+describe("apiAction — a def timeout aborts the run signal but not the dispatch", () => {
+  // def.timeout composes AbortSignal.timeout() with the dispatch's OWN
+  // controller and hands the composite to fetch as the caller signal. When the
+  // def timeout wins, fetch sees an aborted caller signal (so its envelope is
+  // `{ status: 0, code: "cancelled" }`) while ac.signal is still live — so
+  // define.ts classifies the dispatch as an ERROR and keeps the mapped
+  // ActionError. This is the one path on which api.ts's `code === "cancelled"`
+  // arm is observable: it is why that arm must not be deleted.
+  it("surfaces fetch's cancelled envelope as a status-less error coded 'cancelled'", async () => {
+    mockFetch.mockImplementation(
+      (_url: string, init: RequestInit) =>
+        new Promise((_resolve, reject) => {
+          init.signal?.addEventListener("abort", () => {
+            reject(new DOMException("The operation was aborted.", "AbortError"));
+          });
+        }),
+    );
+    const onError = vi.fn();
+    const action = apiAction<{ id: string }, { name: string }>({
+      name: "test.def_timeout_cancelled",
+      timeout: 20,
+      request: ({ id }) => ({ method: "GET", path: `/api/items/${id}` }),
+      error: false,
+      onError,
+    });
+
+    const handle = action.dispatch({ id: "1" });
+
+    await expect(handle.outcome).resolves.toEqual({
+      status: "error",
+      error: { message: "Request cancelled", code: "cancelled" },
+      attempts: 1,
+    });
+    expect(onError).toHaveBeenCalledWith(
+      { message: "Request cancelled", code: "cancelled" },
+      { id: "1" },
+    );
+    const log = recentLog()[0];
+    expect(log?.status).toBe("error");
+    expect(log?.error?.code).toBe("cancelled");
+    expect(log?.error?.status).toBeUndefined();
+  });
+});
+
 describe("apiAction — a request that never reached the network", () => {
   it("maps an un-encodable body to a status-less invalid error, so retryNetwork will not retry it", async () => {
     mockFetch.mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }));
