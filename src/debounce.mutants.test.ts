@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 // The leading-edge cooldown's terminal state. `fireTrailing` is reached with
 // nothing coalesced whenever the quiet window closes on an empty queue, and it
 // must land `isPending()` back on false in BOTH of its arms — otherwise a

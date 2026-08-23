@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 // retry.ts's listener bookkeeping and the two guards that are not just
 // belt-and-braces. Both `sleep` and `waitForOnline` run once per retry attempt
 // against a signal that outlives them, so each has to detach whatever it

@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 // The two halves of cleanup.ts nothing else pins: the fault isolation inside
 // cancelAllPending (a throwing participant must be REPORTED, not just
 // swallowed — a silent catch is how a cancel that never runs goes unnoticed),

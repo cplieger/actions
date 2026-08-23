@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 // Two rules pollUntil states in its own doc comments but the suite does not
 // pin: `backoff` applies only AFTER a consecutive transient failure (so its
 // `maxMs` cap can never shorten the first wait), and each wait's abortable

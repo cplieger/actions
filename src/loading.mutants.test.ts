@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 // Two edges of bindLoadingState's effect that the rest of the suite does not
 // reach: the self-dispose latch (an element that leaves the document must stay
 // released even if it comes back inside the same turn, before the deferred
