@@ -186,8 +186,7 @@ describe("re-entrant dispatch into the same scope", () => {
       name: "test.reentrant_A",
       scope: "reentrant",
       run: async () => {
-        // Dispatch B into the same scope without awaiting it — awaiting here
-        // would deadlock by design, since B queues behind A.
+        // Not awaited: awaiting here would deadlock, since B queues behind A.
         const handleB = actionB.dispatch("b");
         void handleB.then((r) => {
           innerResult = r;
@@ -197,7 +196,6 @@ describe("re-entrant dispatch into the same scope", () => {
     });
     const resultA = await actionA.dispatch("a");
     expect(resultA).toBe("A-done");
-    // B was queued behind A and runs once A's scope slot frees.
     await new Promise((r) => setTimeout(r, 10));
     expect(innerResult).toBe("B-done");
   });

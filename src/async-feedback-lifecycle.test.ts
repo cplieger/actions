@@ -1,11 +1,6 @@
-// Cross-cycle bookkeeping for withAsyncFeedback: the live region is created
-// once, a fresh cycle cancels the previous cycle's pending reset, the reset
-// never touches a button that left the DOM, and a button removed mid-flight
-// still releases the re-entry guard.
-//
-// Separate file from async-feedback.test.ts on purpose: the live-region
-// singleton is module state, so pinning "created once" needs a module instance
-// no other test has already announced through.
+// Separate file from async-feedback.test.ts: the live-region singleton is
+// module state, so pinning "created once" needs a module instance no other
+// test has already announced through.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 import { withAsyncFeedback } from "./async-feedback.js";

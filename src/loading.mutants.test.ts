@@ -1,9 +1,6 @@
-// Two edges of bindLoadingState's effect that the rest of the suite does not
-// reach: the self-dispose latch (an element that leaves the document must stay
-// released even if it comes back inside the same turn, before the deferred
-// dispose runs), and the first arm of the focus-restore guard — the
-// nothing-holds-focus state a real browser produces when the focused control
-// is disabled.
+// Covers two edges the rest of the suite doesn't: the self-dispose latch
+// (re-attach before the deferred dispose runs) and the nothing-holds-focus
+// arm of the focus-restore guard.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { resetActionFramework } from "./test-helpers/action-test-setup.js";
 vi.mock("./notifier.js", () => ({
@@ -34,7 +31,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  // Undo any forced activeElement so the accessor on the prototype is restored.
+  // Undoes the forced activeElement override some tests below install.
   Reflect.deleteProperty(document as unknown as Record<string, unknown>, "activeElement");
   vi.restoreAllMocks();
 });
@@ -47,14 +44,11 @@ describe("bindLoadingState — the self-dispose latch", () => {
 
     btn.remove();
 
-    // First re-run after the detach: the effect notices and latches itself as
-    // disposed, deferring the actual unsubscribe to a microtask.
+    // Effect notices the detach and latches disposed, deferring unsubscribe to a microtask.
     record(instance("detach-1", "load.detach", "pending"));
     expect(btn.disabled).toBe(false);
 
-    // Still the same synchronous turn, so the deferred dispose has NOT run.
-    // Re-attaching must not resurrect the binding: it is already released, and
-    // the owner is expected to call bindLoadingState again if it wants one.
+    // Still the same turn (dispose hasn't run); re-attaching must not resurrect the binding.
     document.body.append(btn);
     record(instance("detach-2", "load.detach", "pending"));
 
@@ -88,11 +82,8 @@ describe("bindLoadingState — focus restore when nothing holds focus", () => {
     record(instance("focus-1", "load.focus_null", "pending"));
     expect(btn.disabled).toBe(true);
 
-    // Measured in Chromium: disabling the focused control parks activeElement on
-    // <body>, never null. So the guard's `=== null` arm is defensive cover for a
-    // non-browser engine rather than a state a browser reaches, and the only way
-    // to exercise it is to install it. Forcing an unreachable state is the point
-    // here; do not read this as a browser behaviour.
+    // Chromium parks activeElement on <body>, never null, on disable; this guard
+    // arm defends a non-browser engine and is only reachable by forcing it here.
     Object.defineProperty(document, "activeElement", { value: null, configurable: true });
     focusSpy.mockClear();
 
@@ -111,8 +102,8 @@ describe("bindLoadingState — focus restore when nothing holds focus", () => {
     record(instance("re-1", "load.reentrant", "pending"));
     expect(btn.disabled).toBe(true);
 
-    // The restore hands focus back to the button; a focus handler that starts
-    // the same action again makes the disposer's own restore reentrant.
+    // The restore hands focus back to the button; re-dispatching from that
+    // focus handler makes the disposer's own restore reentrant.
     let reentrantRecords = 0;
     btn.addEventListener(
       "focus",
@@ -122,8 +113,7 @@ describe("bindLoadingState — focus restore when nothing holds focus", () => {
       },
       { once: true },
     );
-    // focus() on the already-focused element fires nothing, so park focus
-    // elsewhere first and then present the nothing-holds-focus state.
+    // focus() on the already-focused element fires nothing; park elsewhere first.
     const sink = document.createElement("input");
     document.body.append(sink);
     sink.focus();
@@ -132,10 +122,8 @@ describe("bindLoadingState — focus restore when nothing holds focus", () => {
 
     unbind();
 
-    // The reentrancy is the point of the test — assert it really happened.
     expect(reentrantRecords).toBe(1);
-    // The binding was released before the restore ran, so the reentrant pending
-    // record must not reach the element.
+    // Binding was released before the restore ran; the reentrant record must not reach the element.
     expect(btn.disabled).toBe(false);
     expect(btn.getAttribute("aria-busy")).toBeNull();
   });

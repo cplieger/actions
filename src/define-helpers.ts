@@ -1,12 +1,6 @@
-// ---------------------------------------------------------------------------
-// Pure utility helpers extracted from define.ts — independently testable
-// without instantiating the full action framework.
-// ---------------------------------------------------------------------------
-
 import type { NotificationSpec } from "./types.js";
 
-/** Invoke a callback safely — errors are caught and logged without
- *  disrupting the dispatch lifecycle. */
+/** Errors are caught and logged; never disrupts the dispatch lifecycle. */
 export function safeInvoke(actionName: string, hookName: string, fn: () => void): void {
   try {
     fn();
@@ -15,9 +9,8 @@ export function safeInvoke(actionName: string, hookName: string, fn: () => void)
   }
 }
 
-/** Monotonic counter for symbol identity in dedupe keys. Symbols with
- *  the same description are distinct values but String(sym) is identical,
- *  so we assign each unique symbol a stable numeric ID. */
+// Symbols with the same description are distinct values but String(sym) is
+// identical, so each unique symbol needs its own stable numeric id.
 let _symbolCounter = 0;
 const _symbolMap = new Map<symbol, number>();
 export function symbolId(sym: symbol): number {
@@ -29,15 +22,12 @@ export function symbolId(sym: symbol): number {
   return id;
 }
 
-/** Reset symbol state — test-only. */
 export function _resetSymbols(): void {
   _symbolCounter = 0;
   _symbolMap.clear();
 }
 
-/** Defensive JSON.stringify — falls back to String(args) on cycles
- *  or non-serializable values (DOM elements, functions). Used by
- *  the default dedupe key computation. */
+/** Falls back to String(args) on cycles or non-serializable values. */
 export function safeStringify(args: unknown): string {
   if (args === undefined) {
     return "undefined";
@@ -58,10 +48,9 @@ export function safeStringify(args: unknown): string {
     const out = JSON.stringify(args, (_key, value: unknown) =>
       value === undefined ? "__undef__" : value,
     );
-    // A top-level non-serializable value (a bare function) makes JSON.stringify
-    // return the value `undefined` rather than throw, so the catch never fires.
-    // Coerce to a stable string so distinct function args don't collide on a
-    // single `${name}::undefined` dedupe key.
+    // A bare function makes JSON.stringify return `undefined` rather than throw,
+    // so the catch never fires; coerce so distinct functions don't collide on
+    // one dedupe key.
     // eslint-disable-next-line @typescript-eslint/no-base-to-string -- intentional fallback for non-serializable values
     return typeof out === "string" ? out : String(args);
   } catch {
@@ -70,8 +59,7 @@ export function safeStringify(args: unknown): string {
   }
 }
 
-/** Resolve a NotificationSpec to its message string. Returns null when
- *  the spec is `false` (suppressed) or undefined and no fallback. */
+/** Returns null when spec is `false` (suppressed) or undefined with no fallback. */
 export function resolveNotification<TArgs, TPayload>(
   spec: NotificationSpec<TArgs, TPayload> | undefined,
   args: TArgs,
@@ -90,8 +78,7 @@ export function resolveNotification<TArgs, TPayload>(
   return spec(args, payload);
 }
 
-/** Build a default error notification prefix from the action name.
- *  Converts "chat.delete" -> "Delete failed". */
+/** "chat.delete" -> "Delete failed". */
 export function defaultErrorPrefix(name: string): string {
   const parts = name.split(".");
   const tail = parts[parts.length - 1] ?? name;

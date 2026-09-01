@@ -1,5 +1,3 @@
-// Tests for the public ./testing subpath — verifies resetActionFramework()
-// clears every state slot (define, registry, cleanup, api, transport, notifier).
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 import { resetActionFramework } from "./testing.js";
@@ -52,7 +50,6 @@ describe("resetActionFramework", () => {
     });
     await b.dispatch(undefined);
 
-    // Notifier reset → previously-configured success spy must not fire again.
     expect(successSpy).toHaveBeenCalledTimes(1);
   });
 
@@ -95,9 +92,7 @@ describe("resetActionFramework", () => {
     });
     await a.dispatch(undefined);
 
-    // Reset → custom fetchFn no longer used.
     expect(customFetch).not.toHaveBeenCalled();
-    // Reset → global fetch invoked with relative path (no baseUrl prefix).
     expect(globalFetch).toHaveBeenCalledTimes(1);
     const callArg = globalFetch.mock.calls[0]?.[0];
     const url = typeof callArg === "string" ? callArg : (callArg as Request).url;

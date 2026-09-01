@@ -1,7 +1,5 @@
-// The unconfigured-drop warning fires once per process, so whichever channel
-// drops FIRST is the one that has to raise it. The existing suite always drops
-// a success notification first, which leaves the error channel's own call
-// unasserted — an error notification silently vanishing is the worse of the two.
+// The warning fires once per process; existing tests always drop success first,
+// leaving the error channel's own drop-warning call unasserted.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 import { notifyError, notifySuccess, _resetNotifierForTest } from "./notifier.js";

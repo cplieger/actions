@@ -1,10 +1,6 @@
-// apiAction: factory for HTTP-backed actions. The run() implementation is just
-// a request descriptor (RequestSpec); the request/response envelope is owned by
-// @cplieger/fetch. actions holds its OWN fetch instance (createFetch) — fully
-// isolated from any instance a consuming app builds (fetch v2 is
-// instances-only) — and maps fetch's ApiResult envelope onto ActionError so
-// callers see the identical typed errors they always have.
-// ---------------------------------------------------------------------------
+// actions holds its own @cplieger/fetch instance (fetch v2 is
+// instances-only), fully isolated from any instance a consuming app builds,
+// and maps fetch's ApiResult envelope onto ActionError.
 
 import { API_TIMEOUT_MS, createFetch } from "@cplieger/fetch";
 import type { ApiErr, FetchConfig, FetchInstance, RequestOptions } from "@cplieger/fetch";
@@ -21,11 +17,8 @@ import type {
 
 const JSON_CT = "application/json";
 
-// ---------------------------------------------------------------------------
-// HTTP customization seam (mirrors RTK fetchBaseQuery pattern)
-// ---------------------------------------------------------------------------
-
-/** Configuration for the global API fetch layer. Set via `configureApi()`. */
+/** Configuration for the global API fetch layer (mirrors RTK's
+ *  fetchBaseQuery). Set via `configureApi()`. */
 export interface ApiConfig {
   /** Base URL prepended to every RequestSpec.path (e.g. "https://api.example.com/v1").
    *  `RequestSpec.path` is treated as a RELATIVE path: when this is set, an absolute or
@@ -45,15 +38,10 @@ export interface ApiConfig {
   readonly fetchFn?: typeof fetch;
 }
 
-// actions owns a PRIVATE @cplieger/fetch instance. fetch v2 is instances-only
-// with config frozen at construction, so isolation from the consuming app's
-// own fetch instances is inherent — and configureApi's replace semantics are
-// implemented the only way v2 allows: by rebuilding the instance. baseUrl /
-// credentials / fetchFn are projected onto this instance. prepareHeaders stays
-// here (not on the instance) because actions' hook is spec-aware —
-// `(headers, { spec })` — a shape fetch's `(headers)`-only hook can't express,
-// so executeRequest runs it itself and passes the result as the per-request
-// headers.
+// fetch v2's config is frozen at construction, so configureApi's
+// replace-not-merge semantics rebuild the instance rather than mutate it.
+// prepareHeaders stays here rather than on the instance: it is spec-aware
+// (`(headers, { spec })`), a shape fetch's `(headers)`-only hook can't express.
 let apiFetch: FetchInstance = createFetch();
 let apiPrepareHeaders: ApiConfig["prepareHeaders"];
 
@@ -83,8 +71,7 @@ export function configureApi(config: ApiConfig): void {
   if (config.fetchFn !== undefined) {
     fetchConfig.fetchFn = config.fetchFn;
   }
-  // Rebuild the instance: fetch v2 instances are immutable, and configureApi's
-  // contract is replace-not-merge, which a fresh instance implements exactly.
+  // fetch v2 instances are immutable; replace-not-merge needs a fresh one.
   apiFetch = createFetch(fetchConfig);
   apiPrepareHeaders = config.prepareHeaders;
 }
@@ -94,8 +81,6 @@ export function _resetApiConfigForTest(): void {
   apiFetch = createFetch();
   apiPrepareHeaders = undefined;
 }
-
-// ---------------------------------------------------------------------------
 
 /** Context passed to the {@link ApiActionDefinition.decode} hook. */
 export interface ApiDecodeContext {
@@ -184,11 +169,7 @@ async function executeRequest<T>(
     dctx: { readonly spec: RequestSpec },
   ) => ApiErrorDecision<T> | undefined,
 ): Promise<T> {
-  // Build the request headers here (not via fetch's prepareHeaders seam):
-  // actions' hook is spec-aware and receives { spec }, which fetch's plain
-  // (headers) hook can't provide. Content-Type is set before prepareHeaders so
-  // the hook sees it, matching the prior behavior. The body itself is encoded
-  // by fetch (passed raw via opts.body).
+  // Content-Type is set before prepareHeaders so the hook can see/override it.
   const headers = new Headers();
   if (spec.method !== "GET" && spec.body !== undefined) {
     headers.set("Content-Type", JSON_CT);
@@ -196,16 +177,13 @@ async function executeRequest<T>(
   if (ctx?.idempotencyKey !== undefined) {
     headers.set(IDEMPOTENCY_HEADER, ctx.idempotencyKey);
   }
-  // Per-request headers from RequestSpec.
   if (spec.headers !== undefined) {
     for (const [k, v] of Object.entries(spec.headers)) {
       headers.set(k, v);
     }
   }
-  // Global prepareHeaders hook. Honor a returned Headers (RTK convention),
-  // falling back to the mutated instance when the hook returns undefined. A
-  // throw/rejection here propagates before the request is dispatched, so fetch
-  // is never called — preserving the prior fail-before-fetch behavior.
+  // A returned Headers wins (RTK convention); a throw here propagates before
+  // fetch is ever called.
   let effectiveHeaders = headers;
   if (apiPrepareHeaders !== undefined) {
     const prepared = await apiPrepareHeaders(headers, { spec });
@@ -214,10 +192,6 @@ async function executeRequest<T>(
     }
   }
 
-  // Delegate transport + envelope to the isolated fetch instance. baseUrl,
-  // credentials, and fetchFn live on the instance; fetch composes the caller
-  // signal with the timeout (withTimeout(signal, timeoutMs)) and applies the
-  // relative-path / origin-override contract when a baseUrl is configured.
   const opts: RequestOptions<T> = {
     signal,
     timeoutMs: API_TIMEOUT_MS,
@@ -225,8 +199,7 @@ async function executeRequest<T>(
   };
   if (spec.method !== "GET") {
     if (spec.rawBody !== undefined) {
-      // Pre-encoded body: fetch sends it as-is (no JSON encoding, no
-      // automatic Content-Type — spec.headers carries the type).
+      // Sent as-is: no JSON encoding, no automatic Content-Type.
       opts.rawBody = spec.rawBody;
     } else if (spec.body !== undefined) {
       opts.body = spec.body;
@@ -236,13 +209,11 @@ async function executeRequest<T>(
   const result = await apiFetch.requestRaw<T>(spec.method, spec.path, opts);
   if (result.ok) {
     if (decode !== undefined) {
-      // The decoder owns 2xx interpretation: its return is the action result,
-      // its throw routes the dispatch to the error branch (the seam for
-      // 200-with-error envelopes).
+      // A decode throw routes the dispatch to the error branch — the seam
+      // for 200-with-error envelopes.
       return decode(result.data, { status: result.status, spec });
     }
-    // fetch collapses a 204 and an empty-body 2xx to data === undefined. Warn
-    // on an unexpected empty body (a non-204, non-DELETE response), as before.
+    // fetch collapses a 204 and an empty-body 2xx to data === undefined.
     if (result.data === undefined && result.status !== 204 && spec.method !== "DELETE") {
       console.warn(
         `[actions] ${spec.method} ${spec.path} returned empty body — callers expecting data will receive undefined`,
@@ -250,9 +221,8 @@ async function executeRequest<T>(
     }
     return result.data;
   }
-  // decodeError sees only real HTTP responses (status > 0): transport-level
-  // failures keep the default mapping so retryNetwork classification and
-  // cancellation semantics cannot be accidentally rewritten by the hook.
+  // Transport failures (status 0) never reach decodeError, so retryNetwork
+  // classification and cancellation semantics can't be rewritten by the hook.
   if (decodeError !== undefined && result.status > 0) {
     const decision = decodeError(
       {
@@ -282,15 +252,9 @@ async function executeRequest<T>(
 }
 
 /**
- * Map a fetch {@link ApiErr} envelope onto an {@link ActionError} whose
- * `status` / `code` match exactly what `executeRequest` produced before the
- * `@cplieger/fetch` adoption, so `classifyFetchError` / `retryNetwork`
- * consumers and the registry log observe identical errors.
- *
- * A `status` of 0 marks a client-side / transport failure whose reserved
- * `code` is `network | timeout | cancelled | invalid`. Any other `status` is a
- * real HTTP response: a non-2xx (whose `code`, if present, is a server-supplied
- * string lifted from the error body) or a 2xx decode failure (`code: "decode"`).
+ * Map a fetch {@link ApiErr} envelope onto an {@link ActionError}. A `status`
+ * of 0 marks a transport failure (`code: network | timeout | cancelled |
+ * invalid`); any other status is a real HTTP response.
  */
 function actionErrorFromApiErr(err: ApiErr): ActionError {
   const { status, error, code } = err;
@@ -302,9 +266,7 @@ function actionErrorFromApiErr(err: ApiErr): ActionError {
       return new ActionError("Request timed out", { status: 0, code: "timeout" });
     }
     if (code === "invalid") {
-      // Client-side build failure (un-encodable body / bad header) that never
-      // reached the network: carry no HTTP status so retryNetwork treats it as
-      // non-retryable, matching the pre-adoption raw-throw behavior.
+      // No HTTP status: retryNetwork treats a status-less error as non-retryable.
       return new ActionError(error, { code: "invalid" });
     }
     return new ActionError(error, { status: 0, code: "network" });

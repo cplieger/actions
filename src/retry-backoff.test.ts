@@ -1,6 +1,3 @@
-// Retry policy: the exponential backoff schedule, the attempt count recorded
-// on every terminal registry entry, and the two fail-closed edges (a throwing
-// `retryable` predicate, and a signal already aborted at the top of the loop).
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 vi.mock("./notifier.js", () => ({
   configure: vi.fn(),
@@ -52,8 +49,7 @@ describe("retry backoff schedule", () => {
     await vi.advanceTimersByTimeAsync(100);
     expect(calls).toBe(2);
 
-    // The second backoff is 100 * 2^1 = 200ms. A shrinking schedule (100 / 2^1
-    // = 50ms) would have fired the third attempt long before this point.
+    // Second backoff is 100 * 2^1 = 200ms; a shrinking schedule would fire earlier.
     await vi.advanceTimersByTimeAsync(199);
     expect(calls).toBe(2);
 
@@ -126,8 +122,7 @@ describe("attempt count recorded on terminal entries", () => {
       name: "attempts.cancel_pre_run",
       error: false,
       optimistic: () => {
-        // A cancel raised from optimistic() aborts the signal before
-        // runWithRetry reaches its first attempt.
+        // Aborts the signal before runWithRetry reaches its first attempt.
         holder.action?.cancel();
         return null;
       },

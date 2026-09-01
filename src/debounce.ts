@@ -1,45 +1,28 @@
-// debouncedDispatch: wrap an Action so that rapid calls coalesce into
-// a single dispatch after a quiet window. Replaces ad-hoc setTimeout
-// + clearTimeout chains with a single helper that adds flush/cancel.
-// ---------------------------------------------------------------------------
-
 import type { Action } from "./types.js";
 
-/** "Nothing is coalesced" marker. A no-argument action's args ARE `undefined`,
- *  so `undefined` cannot double as the empty state: this sentinel is
- *  module-private and therefore not forgeable as a TArgs value. */
+// A no-argument action's args ARE `undefined`, so it can't double as the
+// empty-state marker; this sentinel is module-private and unforgeable as TArgs.
 const NO_ARGS = Symbol("debounce.noArgs");
 
-/** A debounced action dispatcher. Callable to schedule a dispatch,
- *  with `flush`, `cancel`, and `isPending` control methods. */
 export interface DebouncedDispatch<TArgs> {
-  /** Schedule a dispatch with the given args. Replaces any pending
-   *  dispatch's args. */
+  /** Replaces any pending dispatch's args. */
   (args: TArgs): void;
 
-  /** Fire immediately with the most-recent args (or args supplied
-   *  here, overriding the pending). No-op if nothing is pending and
-   *  no args supplied. */
+  /** Fires immediately with the most-recent args, or the args given here.
+   *  No-op if nothing is pending and no args supplied. */
   flush(args?: TArgs): Promise<unknown> | undefined;
 
-  /** Discard any pending dispatch without firing. */
   cancel(): void;
 
-  /** True if there's a scheduled dispatch waiting for the timer. */
   isPending(): boolean;
 }
 
 interface DebounceOptions {
-  /** Quiet window in ms. */
   readonly wait: number;
-  /** Fire on the leading edge instead of the trailing edge. Default false. */
+  /** Default false (trailing edge). */
   readonly leading?: boolean;
 }
 
-/**
- * Wrap an action with a debounce timer so rapid calls coalesce into a
- * single dispatch after a quiet window.
- */
 export function debouncedDispatch<TArgs, TResult>(
   action: Action<TArgs, TResult>,
   opts: DebounceOptions,
@@ -64,9 +47,7 @@ export function debouncedDispatch<TArgs, TResult>(
       void action.dispatch(args);
       lastFiredAt = now;
       lastArgs = NO_ARGS;
-      // Nothing is scheduled after a leading-edge fire — the timer below is a
-      // cooldown re-arm, not a pending dispatch — so isPending() reads false
-      // until a call lands inside the quiet window (doc contract above).
+      // The timer below is a cooldown re-arm, not a pending dispatch.
       pending = false;
       if (timer !== undefined) {
         clearTimeout(timer);
@@ -96,8 +77,6 @@ export function debouncedDispatch<TArgs, TResult>(
     lastArgs = NO_ARGS;
     if (a !== NO_ARGS) {
       lastFiredAt = Date.now();
-      // The coalesced args fire now; the re-armed timer is a cooldown window
-      // with nothing scheduled in it yet, so isPending() reads false.
       pending = false;
       timer = setTimeout(fireTrailing, opts.wait);
       void action.dispatch(a);

@@ -486,19 +486,18 @@ describe("defineAction — deduped joiner fires definition-level callbacks", () 
       onSettled: defOnSettled,
       run: async () => "shared-result",
     });
-    // Two concurrent dispatches with the same key: the second joins the first.
+    // The second dispatch joins the first (same dedupe key).
     const originator = action.dispatch("k");
     const joiner = action.dispatch("k", { onSuccess: joinerOnSuccess });
     const [r1, r2] = await Promise.all([originator, joiner]);
     expect(r1).toBe("shared-result");
     expect(r2).toBe("shared-result");
-    // Both the originator AND the joiner fire the definition-level callbacks
-    // (pre-fix the joiner fired only its per-call callbacks, so this was 1).
+    // Both the originator AND the joiner fire the definition-level callbacks.
     expect(defOnSuccess).toHaveBeenCalledTimes(2);
     expect(defOnSuccess).toHaveBeenCalledWith("shared-result", "k");
     expect(defOnSettled).toHaveBeenCalledTimes(2);
     expect(joinerOnSuccess).toHaveBeenCalledTimes(1);
-    // The joiner's def-level firing (the 2nd def call) precedes its per-call.
+    // The joiner's def-level firing precedes its own per-call firing.
     expect(defOnSuccess.mock.invocationCallOrder[1]!).toBeLessThan(
       joinerOnSuccess.mock.invocationCallOrder[0]!,
     );
@@ -548,8 +547,7 @@ describe("defineAction — deduped joiner fires definition-level callbacks", () 
       onError: joinerOnError,
     });
     await Promise.all([originator, joiner]);
-    // A null result is a legitimate success; the joiner must not synthesise a
-    // "deduped dispatch did not succeed" error from it.
+    // A null result is a legitimate success, not a synthetic dedupe error.
     expect(defOnSuccess).toHaveBeenCalledTimes(2);
     expect(defOnSuccess).toHaveBeenCalledWith(null, "k");
     expect(joinerOnSuccess).toHaveBeenCalledTimes(1);
@@ -594,9 +592,7 @@ describe("defineAction — deduped joiner of a cancelled dispatch", () => {
     const [r1, r2] = await Promise.all([originator, joiner]);
     expect(r1).toBeNull();
     expect(r2).toBeNull();
-    // A joiner attached to a dispatch that is then cancelled must settle
-    // silently: it fires neither onSuccess nor the synthetic "deduped dispatch
-    // did not succeed" onError, only onSettled.
+    // A joiner of a cancelled dispatch settles silently: only onSettled fires.
     expect(joinerOnSuccess).not.toHaveBeenCalled();
     expect(joinerOnError).not.toHaveBeenCalled();
     expect(joinerOnSettled).toHaveBeenCalledTimes(1);

@@ -1,7 +1,6 @@
-// The two halves of cleanup.ts nothing else pins: the fault isolation inside
-// cancelAllPending (a throwing participant must be REPORTED, not just
-// swallowed — a silent catch is how a cancel that never runs goes unnoticed),
-// and the beforeunload listener's install-once / remove-on-reset bookkeeping.
+// Fault isolation in cancelAllPending (a throwing participant must be
+// REPORTED, not silently swallowed) and the beforeunload listener's
+// install-once / remove-on-reset bookkeeping — nothing else pins either.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 import { registerCleanup, _registerAction, _cancelAllForTest, _resetForTest } from "./cleanup.js";

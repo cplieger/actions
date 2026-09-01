@@ -1,8 +1,3 @@
-// retry.ts — extracted retry/backoff primitives from define.ts.
-// These are pure utility functions with no dependency on the action
-// framework, making them independently testable.
-// ---------------------------------------------------------------------------
-
 /** Abort-aware sleep. Rejects with AbortError if the signal fires
  *  before the timeout elapses. Resolves immediately for ms <= 0. */
 export function sleep(ms: number, signal: AbortSignal): Promise<void> {
@@ -28,18 +23,8 @@ export function sleep(ms: number, signal: AbortSignal): Promise<void> {
 /** Wait for the browser to come back online, or for the signal to abort.
  *  Resolves immediately unless the platform positively reports being offline. */
 export function waitForOnline(signal: AbortSignal): Promise<void> {
-  // Only WAIT when the platform positively says offline. An absent `onLine` is not
-  // evidence of a disconnection, and reading it off the object rather than testing
-  // for the object is what makes that true in every runtime: Node ships a
-  // `Navigator` with no `onLine`, so a `typeof navigator` test answers "assume
-  // offline" and then registers no `online` listener, because there is no `window`
-  // to register it on. The promise could only settle by abort.
-  //
-  // The nullable type on the read is load-bearing rather than decorative. The DOM
-  // lib declares `navigator` always present and `onLine` a plain `boolean`, which
-  // is true of a browser and of nothing else; read through that type the compiler
-  // proves this check dead and the lint offers to delete the one guard the
-  // non-browser runtimes need.
+  // Node ships a `navigator` with no `onLine`; testing for `false` (not for the
+  // object's presence) avoids reading that absence as "offline".
   const onLine = (globalThis as { readonly navigator?: Navigator }).navigator?.onLine;
   if (onLine !== false) {
     return Promise.resolve();

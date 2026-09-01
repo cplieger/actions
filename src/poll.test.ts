@@ -1,4 +1,3 @@
-// Tests for pollAction.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 vi.mock("./notifier.js", () => ({

@@ -1,30 +1,16 @@
-// Action registry: in-memory log of all dispatched actions with a
-// subscribe API. Fires per state transition.
+// Two disjoint-lifetime structures so pending accounting cannot desync from
+// log eviction by construction: `inflight` holds pending dispatches (never
+// evicted by count, only the leak watchdog past MAX_INFLIGHT); `settled`
+// holds terminal snapshots, latest-per-id, bounded to MAX_LOG_SIZE by
+// evicting the lowest-seq (first-record order) entry. A per-dispatch `seq`
+// stamped at first record orders the recomposed getActionLog() view.
 //
-// Shape: two single-purpose structures with disjoint lifetimes, so the
-// pending accounting cannot desync from log eviction by construction.
-//
-//   - `inflight` holds the pending dispatches. Entries live exactly as
-//     long as their dispatch is in flight; the table never evicts by
-//     count (only the leak watchdog reclaims past MAX_INFLIGHT), so a
-//     pending entry can never be displaced by log churn.
-//   - `settled` holds terminal snapshots, latest-per-dispatch-id,
-//     bounded to MAX_LOG_SIZE by evicting the lowest-seq entry
-//     (first-record order — the same victim the old single-array
-//     shape picked).
-//
-// A per-dispatch monotonic `seq`, stamped at first record, orders the
-// recomposed getActionLog() view identically to the old array's
-// insertion order.
-//
-// Transition table for record(instance). The caller contract
-// (define.ts) records one pending then at most one terminal per
-// dispatch id, and an id's `name` never changes across records (ids
-// embed their action name). Every cell is still defined so an
-// out-of-contract input degrades to sane accounting rather than a
-// desync; reentrant records from synchronous signal effects land on
-// coherent state because each transition completes its map moves
-// before publishing signals:
+// Transition table for record(instance). The caller contract (define.ts)
+// records one pending then at most one terminal per dispatch id, and an id's
+// `name` never changes across records. Every cell is defined so an
+// out-of-contract input degrades to sane accounting rather than a desync;
+// each transition completes its map moves before publishing signals, so a
+// reentrant record from a synchronous effect lands on coherent state:
 //
 //   status   | id in inflight       | id in settled          | id unknown
 //   ---------|----------------------|------------------------|--------------------
@@ -33,15 +19,10 @@
 //   terminal | move to settled      | overwrite instance     | insert into settled
 //            | (keep seq), unindex  | (keep seq + position)  | (new seq), evict
 //
-// Pending state (isPending / pendingCount) is mirrored into reactive signals,
-// so it can be read inside an effect — bindLoadingState is a plain effect over
-// these, not a bespoke subscription. The pendingByName Set index over
-// `inflight` is the per-name source of truth; the signals expose the derived
-// counts, and the total is `inflight.size` (membership, not paired
-// arithmetic — an unpaired decrement is unrepresentable). The lifecycle
-// fan-out below (record → listeners) is a discrete event stream and stays a
-// plain emitter — events are not reactive state.
-// ---------------------------------------------------------------------------
+// pendingByName (over `inflight`) is the source of truth for pending state;
+// signals expose it reactively, and the total is `inflight.size` (membership,
+// not paired arithmetic). The record → listeners fan-out stays a plain
+// emitter — events are not reactive state.
 
 import { signal, batch, SignalMap } from "@cplieger/reactive";
 
@@ -49,12 +30,8 @@ import type { ActionInstance, RegistryListener } from "./types.js";
 
 const MAX_LOG_SIZE = 200;
 
-/** Leak watchdog threshold for the in-flight table. `settled` is bounded by
- *  construction, so only a dispatch that never settles (a lifecycle bug in
- *  the defining layer) can grow state — past this many in-flight entries the
- *  oldest is reclaimed with a console.warn naming it. This bounds the
- *  in-flight population specifically; the old shape's equivalent tier
- *  (MAX_LOG_HARD) bounded the combined log. */
+/** Only a dispatch that never settles can grow `inflight` past this; the
+ *  oldest is then reclaimed with a console.warn naming it. */
 const MAX_INFLIGHT = 1000;
 
 interface LogEntry {
@@ -112,16 +89,11 @@ function unindexPending(name: string, id: string): void {
   });
 }
 
-/** Bound `settled` by evicting the lowest-seq (first-record order) entry —
- *  the same victim the old array shape's oldest-position-first scan picked.
- *  Map insertion order alone is settle order, not first-record order (a
- *  long-pending dispatch settles late), hence the ≤ (MAX_LOG_SIZE + 1)-entry
- *  scan. `protectId` shields the entry being recorded right now — load-
- *  bearing on the pending → terminal path (a long-lived pending that finally
- *  settles carries the lowest seq of the whole log and would otherwise evict
- *  itself the instant it completed; the old shape's own-id guard covered
- *  this). On the terminal-only path it is belt-and-braces: a fresh seq is
- *  never the lowest among older entries. */
+/** Evicts the lowest-seq (first-record order) entry. Map insertion order
+ *  alone is settle order, not first-record order (a long-pending dispatch
+ *  settles late), hence the linear scan. `protectId` shields the entry being
+ *  recorded right now: a long-lived pending that finally settles can carry
+ *  the lowest seq of the whole log and would otherwise evict itself. */
 function evictOldestSettled(protectId: string): void {
   while (settled.size > MAX_LOG_SIZE) {
     let oldestKey: string | undefined;
@@ -139,13 +111,10 @@ function evictOldestSettled(protectId: string): void {
   }
 }
 
-/** Reclaim the oldest in-flight entry once the table exceeds MAX_INFLIGHT,
- *  skipping `protectId` (the entry being recorded right now must not reclaim
- *  itself — a revived entry keeps its original, possibly-lowest seq). The
- *  reclaimed entry is dropped outright (not moved to `settled`: its status is
- *  still "pending", and the terminal log must not lie). Runs on every path
- *  that grows the table: unknown-pending insert AND terminal → pending
- *  revival. */
+/** Reclaims the oldest in-flight entry once the table exceeds MAX_INFLIGHT,
+ *  skipping `protectId` (a revived entry keeps its original, possibly-lowest
+ *  seq, and must not reclaim itself). Dropped outright, never moved to
+ *  `settled`: its status is still "pending" and the terminal log must not lie. */
 function reclaimLeakedPending(protectId: string): void {
   if (inflight.size <= MAX_INFLIGHT) {
     return;
@@ -177,15 +146,10 @@ export function record(instance: ActionInstance): void {
   if (instance.status === "pending") {
     const inf = inflight.get(id);
     if (inf !== undefined) {
-      // Pending re-record: in-place overwrite, no accounting change.
       inf.instance = instance;
     } else {
       const done = settled.get(id);
       if (done !== undefined) {
-        // Terminal → pending re-record. Not produced by define.ts (one
-        // pending, then at most one terminal per id); defined anyway: move
-        // back, keep the original seq. Grows the table, so the watchdog
-        // runs here too (protecting the revived id itself).
         settled.delete(id);
         done.instance = instance;
         inflight.set(id, done);
@@ -201,15 +165,10 @@ export function record(instance: ActionInstance): void {
   } else {
     const inf = inflight.get(id);
     if (inf !== undefined) {
-      // The common transition: pending → terminal. Membership moves between
-      // the tables; the accounting decrements because the id LEFT inflight,
-      // not because a counter was paired correctly. Order matters: the
-      // entry is FULLY moved (settled + evicted) before unindexPending
-      // publishes signals, because reactive effects flush synchronously at
-      // that batch's end — an observer reading getActionLog()/pendingCount
-      // there must see the entry as terminal, never absent, and a reentrant
-      // same-id record from an effect must find it in `settled` (the revive
-      // cell) rather than minting a duplicate wrapper.
+      // Entry must be fully moved before unindexPending publishes signals:
+      // reactive effects flush synchronously at that batch's end, and a
+      // reentrant same-id record from one must find it in `settled` (the
+      // revive cell) rather than minting a duplicate wrapper.
       const indexedName = inf.instance.name;
       inflight.delete(id);
       inf.instance = instance;
@@ -219,10 +178,8 @@ export function record(instance: ActionInstance): void {
     } else {
       const done = settled.get(id);
       if (done !== undefined) {
-        // Double-terminal record: latest-per-id, keep seq + position.
         done.instance = instance;
       } else {
-        // Terminal-only record (cancelled before start, optimistic failure).
         seqCounter += 1;
         settled.set(id, { instance, seq: seqCounter });
         evictOldestSettled(id);

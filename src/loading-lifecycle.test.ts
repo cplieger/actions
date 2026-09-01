@@ -1,8 +1,5 @@
-// bindLoadingState lifecycle: the option defaults, the disabledFn seam, the
-// detach auto-dispose path, focus restoration, and what the returned disposer
-// is allowed to touch. loading.test.ts covers the pending/idle toggle with
-// detached elements; every element here is IN the document, which is what the
-// connection tracking and the focus guard actually key on.
+// Every element here is IN the document (unlike loading.test.ts), which is
+// what the connection tracking and focus guard key on.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { resetActionFramework } from "./test-helpers/action-test-setup.js";
 vi.mock("./notifier.js", () => ({
@@ -44,16 +41,8 @@ function attachedButton(): HTMLButtonElement {
   return btn;
 }
 
-/**
- * Park focus on <body> as a START state.
- *
- * Not needed to simulate a disable any more: bindLoadingState sets
- * `el.disabled = true` while pending and the browser drops focus off a disabled
- * element by itself, so a test that dispatches first can assert that directly.
- * This is only for a test whose premise is "the element never had focus", where
- * a sibling test in the same file may have left focus elsewhere -- Browser Mode
- * gives each FILE its own page, not each test.
- */
+/** Parks focus on <body> so a test whose premise is "never had focus" starts
+ * clean — Browser Mode shares one page per FILE, not per test. */
 function parkFocusOnBody(): void {
   const sink = document.createElement("button");
   document.body.appendChild(sink);
@@ -236,8 +225,7 @@ describe("bindLoadingState — focus restoration", () => {
     btn.focus();
     bindLoadingState("load.focus_back", btn);
     const p = action.dispatch({});
-    // The dispatch disabled the element and the browser dropped focus to
-    // <body> on its own; that is the state under test, not a simulated one.
+    // Browser drops focus to <body> on disable by itself; not simulated here.
     expect(document.activeElement).toBe(document.body);
     settle();
     await p;

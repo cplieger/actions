@@ -1,10 +1,5 @@
-// Direct unit tests for the retry primitives in retry.ts. They are exercised
-// only indirectly through defineAction's retry loop today, which leaves the
-// abort-path cleanup, the ms <= 0 fast path and the non-window branches of
-// waitForOnline unpinned.
-//
-// Default (node) environment on purpose: `window` is undefined here, which is
-// the branch a browser test can never reach.
+// Node env (no window) is deliberate: exercises waitForOnline's non-window
+// branch, which defineAction's own retry loop leaves unpinned.
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { sleep, waitForOnline, attachAttempts, readAttempts } from "./retry.js";
 

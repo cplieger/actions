@@ -1,7 +1,5 @@
-// retry.ts's listener bookkeeping and the two guards that are not just
-// belt-and-braces. Both `sleep` and `waitForOnline` run once per retry attempt
-// against a signal that outlives them, so each has to detach whatever it
-// attached on BOTH sides of its race — the leak is per-attempt, not per-action.
+// sleep/waitForOnline run once per retry attempt against a signal that
+// outlives them, so each must detach its listener on BOTH sides of its race.
 import { describe, it, expect, vi, afterEach } from "vitest";
 
 import { attachAttempts, readAttempts, sleep, waitForOnline } from "./retry.js";
@@ -17,13 +15,8 @@ function goOffline(): void {
   Object.defineProperty(navigator, "onLine", { value: false, configurable: true });
 }
 
-/** Report how `p` settles inside a real `ms` window, without asserting anything.
- *  A "pending" answer is what the offline arm needs pinned: a promise nothing but
- *  an `online` event or an abort can settle is only visible by letting time pass.
- *  At `ms` of 0 the deadline is a macrotask, which an already-resolved promise
- *  always beats, so "resolved" there means resolved in the same turn. The
- *  "rejected" arm is load-bearing: without it a promise that rejects at once
- *  would read as "pending" and a hang test would pass for the wrong reason. */
+/** Reports how `p` settles within `ms`, without asserting. At `ms` of 0 the
+ *  deadline is a macrotask, which an already-resolved promise always beats. */
 function settleWithin(p: Promise<void>, ms: number): Promise<"resolved" | "rejected" | "pending"> {
   const deadline = new Promise<"pending">((resolve) => setTimeout(() => resolve("pending"), ms));
   return Promise.race([
@@ -51,8 +44,7 @@ describe("sleep — abort-listener bookkeeping", () => {
     await vi.advanceTimersByTimeAsync(50);
     await expect(slept).resolves.toBeUndefined();
 
-    // The signal belongs to the whole dispatch, not to this one backoff wait:
-    // a listener left behind here accumulates once per retry attempt.
+    // A listener left behind here accumulates once per retry attempt.
     expect(remove).toHaveBeenCalledWith("abort", abortCall?.[1]);
   });
 
@@ -67,22 +59,16 @@ describe("sleep — abort-listener bookkeeping", () => {
 
 describe("waitForOnline — only a positive offline report waits", () => {
   it("resolves when there is no navigator at all", async () => {
-    // Kept because the read still has to be null-safe, but NOT because any
-    // runtime is shaped this way: the comment this replaces called it "the SSR /
-    // worker shape the guard exists for" and neither shape qualifies. Node has
-    // had a `navigator` since v21 and a Web Worker has `WorkerNavigator` with a
-    // real `onLine`. Only a stub reaches this arm.
+    // Only a stub reaches this arm: Node has had `navigator` since v21 and a
+    // Web Worker's has a real `onLine`.
     vi.stubGlobal("navigator", undefined);
     const ac = new AbortController();
     expect(await settleWithin(waitForOnline(ac.signal), 0)).toBe("resolved");
   });
 
   it("resolves when navigator carries no onLine property, which is Node's real shape", async () => {
-    // The shape the defect lived in, and the reason the guard reads `onLine`
-    // instead of testing for `navigator`. `onLine` is `undefined` here, which a
-    // truthiness test reads as offline — and the offline arm then waits for an
-    // `online` event Node has no `window` to deliver, so the promise could only
-    // ever settle by abort. Any retrying action stalled on its first retry.
+    // Node's real shape: `onLine` undefined here read as offline previously
+    // stalled every retrying action on its first retry (no window to fire `online`).
     vi.stubGlobal("navigator", {});
     const ac = new AbortController();
     expect(await settleWithin(waitForOnline(ac.signal), 0)).toBe("resolved");
@@ -98,8 +84,6 @@ describe("waitForOnline — only a positive offline report waits", () => {
     const ac = new AbortController();
     const waiting = waitForOnline(ac.signal);
 
-    // A real window rather than the macrotask boundary above: the claim is that
-    // nothing settles this promise on its own, and only elapsed time shows that.
     expect(await settleWithin(waiting, 50)).toBe("pending");
 
     ac.abort();
@@ -146,8 +130,7 @@ describe("waitForOnline — listener bookkeeping while offline", () => {
     ac.abort();
     await expect(waiting).rejects.toThrow(/aborted/);
 
-    // The abort arm has to clean up the window listener too: the pending
-    // `online` subscription would otherwise outlive the cancelled dispatch.
+    // Otherwise the pending `online` subscription outlives the cancelled dispatch.
     expect(windowRemove).toHaveBeenCalledWith("online", onlineCall?.[1]);
     expect(signalRemove).toHaveBeenCalled();
   });
@@ -165,9 +148,8 @@ describe("readAttempts / attachAttempts agree on what can carry an attempt count
     const thrown = (): void => undefined;
     Object.defineProperty(thrown, "_attempts", { value: 3, configurable: true });
 
-    // attachAttempts only stamps `typeof e === "object"` throwables, so a
-    // function's own `_attempts` is not retry metadata and must not be read as
-    // one — otherwise an unrelated property becomes a fake attempt count.
+    // attachAttempts only stamps object throwables; a function's own
+    // `_attempts` must not be read as one, or it becomes a fake attempt count.
     attachAttempts(thrown, 7);
     expect(readAttempts(thrown)).toBeUndefined();
   });

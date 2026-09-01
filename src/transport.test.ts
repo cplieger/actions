@@ -1,4 +1,3 @@
-// Tests for transportAction error classification and the configureTransport seam.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { resetActionFramework } from "./test-helpers/action-test-setup.js";
 import { configureTransport, transportAction, _resetTransportForTest } from "./transport.js";
@@ -77,7 +76,6 @@ describe("transportAction error classification", () => {
 
   it("signal.aborted takes precedence", async () => {
     mockSend.mockImplementation(async (_cmd, { signal }) => {
-      // Simulate delay so cancel can fire
       await new Promise((r) => setTimeout(r, 10));
       if (signal.aborted) return { ok: false, status: 0, error: "cancelled", code: "network" };
       return { ok: true, status: 200 };

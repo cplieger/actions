@@ -1,6 +1,5 @@
-// apiAction decode / decodeError hooks: the response-interpretation seam for
-// nonstandard HTTP envelopes (200-with-error bodies, meaningful non-2xx
-// bodies) that previously forced hand-rolled defineAction runners.
+// decode/decodeError: the response-interpretation seam for nonstandard HTTP
+// envelopes (200-with-error bodies, meaningful non-2xx bodies).
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { resetActionFramework } from "./test-helpers/action-test-setup.js";
 vi.mock("./notifier.js", () => ({

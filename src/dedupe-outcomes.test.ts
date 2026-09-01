@@ -1,7 +1,5 @@
-// Dedupe semantics on the cancelled paths: a joiner must inherit the primary's
-// cancellation rather than the "deduped dispatch did not succeed" fallback, on
-// both shapes of cancel (the run rejects on abort, and the run completes
-// anyway). Plus the explicit opt-out: `dedupe: false` must not collapse.
+// A joiner must inherit the primary's cancellation, not the "deduped dispatch
+// did not succeed" fallback, on both shapes of cancel.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 vi.mock("./notifier.js", () => ({
   configure: vi.fn(),
@@ -21,8 +19,7 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
-/** Resolve the outcome, or a `pending` marker if it never settles. Keeps a
- *  never-resolving outcome a fast assertion failure instead of a timeout. */
+/** Turns a never-resolving outcome into a fast failure instead of a timeout. */
 function outcomeOrPending<T>(outcome: Promise<ActionOutcome<T>>): Promise<ActionOutcome<T>> {
   return Promise.race([
     outcome,
@@ -65,7 +62,7 @@ describe("deduped joiner of a cancelled primary", () => {
       name: "dedupe.cancel_blind_run",
       dedupe: true,
       error: false,
-      // Signal-blind: the work finishes even though the dispatch was cancelled.
+      // Signal-blind: run finishes even though the dispatch was cancelled.
       run: async () => gate,
     });
 

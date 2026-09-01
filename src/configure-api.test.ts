@@ -1,4 +1,3 @@
-// Tests for the configureApi HTTP-customization seam.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 vi.mock("./notifier.js", () => ({
@@ -155,8 +154,7 @@ describe("configureApi — prepareHeaders", () => {
       },
     });
     mockFetch.mockResolvedValue(new Response(JSON.stringify({}), { status: 200 }));
-    // Per-request headers are set before prepareHeaders, so prepareHeaders wins
-    // This matches RTK behavior where prepareHeaders runs last
+    // Per-request headers are set before prepareHeaders (RTK convention: it runs last).
     const action = apiAction<string>({
       name: "override.test",
       request: () => ({ method: "GET", path: "/x", headers: { "X-Override": "from-spec" } }),
@@ -164,7 +162,6 @@ describe("configureApi — prepareHeaders", () => {
     await action.dispatch("x");
     const headers = mockFetch.mock.calls[0]![1].headers as Headers;
     expect(headers.get("x-global")).toBe("global");
-    // prepareHeaders runs after spec headers, so it overrides
     expect(headers.get("x-override")).toBe("from-global");
   });
 
@@ -405,8 +402,7 @@ describe("configureApi — prepareHeaders returns a Headers object", () => {
   it("honors a Headers object returned by prepareHeaders, replacing the mutated instance", async () => {
     configureApi({
       prepareHeaders: (headers) => {
-        // Mutate the provided instance, then return a DIFFERENT Headers object
-        // (RTK convention). The returned object must win wholesale.
+        // Returns a DIFFERENT Headers object (RTK convention); it must win wholesale.
         headers.set("X-Mutated", "ignored");
         const replacement = new Headers();
         replacement.set("Authorization", "Bearer returned");

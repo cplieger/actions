@@ -1,6 +1,4 @@
-// Notifier unwired-slot policy: unconfigured drops warn once (the
-// silent-by-default footgun); an explicit configure() — even an empty or
-// partial one — is the documented headless opt-in and stays silent.
+// Unconfigured drops warn once; an explicit configure() (even empty/partial) stays silent.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { configure, notifyError, notifySuccess, _resetNotifierForTest } from "./notifier.js";
 

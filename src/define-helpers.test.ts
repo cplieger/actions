@@ -1,7 +1,5 @@
-// Direct unit + property tests for the pure helpers in define-helpers.ts.
-// These are exercised only indirectly via define.ts dispatch today, leaving
-// the bigint / symbol / cyclic-fallback branches of safeStringify and the
-// defaultErrorPrefix transform uncovered.
+// Covers safeStringify's bigint / symbol / cyclic-fallback branches and the
+// defaultErrorPrefix transform, exercised only indirectly via dispatch today.
 import { describe, it, expect } from "vitest";
 import fc from "fast-check";
 import {
@@ -40,7 +38,6 @@ describe("safeStringify — primitive branches", () => {
     _resetSymbols();
     const a = Symbol("x");
     expect(safeStringify(a)).toBe("@@sym1");
-    // Same symbol -> same key on a repeat call.
     expect(safeStringify(a)).toBe("@@sym1");
   });
 });
@@ -62,16 +59,14 @@ describe("safeStringify — object branches", () => {
   });
 
   it("coerces a top-level bare function to a string, not undefined", () => {
-    // JSON.stringify(fn) yields the value `undefined` (no throw), so the
-    // catch never fires; safeStringify must still honor its `string` contract.
+    // JSON.stringify(fn) returns the value `undefined` (no throw), so the
+    // catch never fires here.
     const out = safeStringify(() => 1);
     expect(typeof out).toBe("string");
     expect(out).not.toBe("undefined");
   });
 
   it("gives distinct keys to functions with distinct source", () => {
-    // Before the coercion fix both returned the value `undefined`, colliding
-    // every function arg onto a single `${name}::undefined` dedupe key.
     const a = (x: number): number => x + 1;
     const b = (y: number): number => y * 2;
     expect(safeStringify(a)).not.toBe(safeStringify(b));
@@ -80,9 +75,8 @@ describe("safeStringify — object branches", () => {
 
 describe("safeStringify — property: total and deterministic over arbitrary input", () => {
   it("always returns a string and never throws, even for exotic values", () => {
-    // Top-level bare functions are included: JSON.stringify returns the value
-    // `undefined` (not a throw) for them, so safeStringify coerces the result
-    // rather than leaking `undefined` through its `string` contract.
+    // Bare functions: JSON.stringify returns `undefined` (not a throw) for
+    // them, so safeStringify must coerce rather than leak it.
     const exotic = fc.oneof(
       fc.anything(),
       fc.bigInt(),
@@ -104,8 +98,7 @@ describe("safeStringify — property: total and deterministic over arbitrary inp
         _resetSymbols();
         const s1 = Symbol(d1);
         const s2 = Symbol(d2);
-        // Two distinct symbols — even with identical descriptions — must map
-        // to distinct keys, or dedupe would conflate independent dispatches.
+        // Distinct symbols with identical descriptions must map to distinct keys.
         expect(safeStringify(s1)).not.toBe(safeStringify(s2));
       }),
       { numRuns: 200 },

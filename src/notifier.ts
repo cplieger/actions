@@ -1,24 +1,13 @@
-// Notifier interface: consumer-injected adapter for toast/notification
-// display. Replaces the app-specific toast.ts import. The framework
-// calls these during the action lifecycle (success/error toasts).
-// ---------------------------------------------------------------------------
-
 /** Retry button descriptor passed to error notifications. */
 export interface NotifierRetry {
   readonly onClick: () => void;
 }
 
-/** Consumer-provided notification adapter. Implement this interface
- *  and pass it to `configure()` to wire up toast/notification display.
+/** Consumer-provided notification adapter, wired via `configure()`. Both methods
+ *  optional; unset ones drop silently.
  *
- *  All methods are optional — when not provided, the framework silently
- *  drops the notification (useful for headless/test environments).
- *
- *  SECURITY: the `message` passed to `error()` (and `success()`) may contain
- *  server-controlled text — e.g. an HTTP error body's `error` field surfaced via
- *  ActionError.message, or a transport `r.error`. Render it as TEXT (textContent /
- *  a text node), never via innerHTML, to avoid reflected XSS from a malicious or
- *  compromised server response. */
+ *  SECURITY: `message` may carry server-controlled text (e.g. an HTTP error
+ *  body's `error` field). Render as TEXT, never innerHTML — reflected XSS risk. */
 export interface Notifier {
   success?(message: string): void;
   error?(message: string, retry?: NotifierRetry): void;
@@ -28,18 +17,14 @@ let _notifier: Notifier = {};
 let _configured = false;
 let _warnedUnconfigured = false;
 
-/** Configure the global notifier adapter. Call once at app boot. Passing an
- *  empty object (`configure({})`) is the explicit headless opt-in: it keeps
- *  notifications silently dropped without the unconfigured-drop warning. */
+/** Configure the global notifier adapter. `configure({})` is the explicit
+ *  headless opt-in — silent, no unconfigured-drop warning. */
 export function configure(notifier: Notifier): void {
   _notifier = notifier;
   _configured = true;
 }
 
-/** Warn once, on the first notification dropped because configure() was
- *  never called — the silent-by-default footgun. An explicit configure()
- *  (even with missing methods) is a deliberate headless choice and stays
- *  silent, matching the documented Notifier contract. */
+/** Warn once on the first notification dropped because configure() was never called. */
 function warnUnconfiguredDrop(kind: string): void {
   if (_configured || _warnedUnconfigured) {
     return;

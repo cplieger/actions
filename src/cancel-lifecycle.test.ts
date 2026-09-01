@@ -1,8 +1,6 @@
-// Cancellation bookkeeping: every cancelled dispatch settles exactly once, is
-// recorded exactly once, and a dispatch cancelled before it starts applies no
-// optimistic update. The scope-queued paths are the ones with two competing
-// settle sites (cancel()'s early-cancel resolver and runOnce's own aborted
-// branch), so a lost guard there shows up as a double onSettled.
+// The scope-queued paths have two competing settle sites (cancel()'s
+// early-cancel resolver and runOnce's own aborted branch); a lost guard
+// there shows up as a double onSettled.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 vi.mock("./notifier.js", () => ({
   configure: vi.fn(),
