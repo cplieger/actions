@@ -1,6 +1,5 @@
-// The two error paths that bypass run(): an optimistic() that throws, and an
-// error-notification formatter that throws. Plus the retry button's args
-// handling for a throwable that structuredClone refuses to copy.
+// The two error paths that bypass run(): optimistic() throwing, and an
+// error-notification formatter throwing.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 vi.mock("./notifier.js", () => ({
   configure: vi.fn(),
@@ -101,11 +100,10 @@ describe("error notification formatter throws", () => {
 });
 
 describe("a thrown value that makes toActionError itself throw", () => {
-  // toActionError (error.ts) reads `e.message`, so a throwable with a throwing
-  // message getter makes runOnce REJECT — the one hole in dispatch()'s
-  // resolve-never-reject contract. The caller can handle the handle's
-  // rejection; a derived promise dispatch() creates for its own bookkeeping
-  // cannot be handled by anyone, so it must not be left unguarded.
+  // toActionError reads `e.message`, so a throwing message getter makes
+  // runOnce REJECT — the one hole in dispatch()'s resolve-never-reject
+  // contract. Only the caller's handle may reject; dispatch()'s own
+  // bookkeeping promises must not be left unguarded.
   it("rejects only the caller's handle, never an unhandled promise", async () => {
     const boom = new Error("message getter exploded");
     const hostile = new ActionError("placeholder");
@@ -136,8 +134,8 @@ describe("a thrown value that makes toActionError itself throw", () => {
       });
       expect(caught).toBe(boom);
 
-      // Two macrotask turns: a rejection is reported as unhandled at the end of
-      // the turn in which it stayed without a handler.
+      // A rejection is reported as unhandled at the end of the turn it stayed
+      // without a handler.
       await new Promise((r) => {
         setTimeout(r, 0);
       });
@@ -146,9 +144,8 @@ describe("a thrown value that makes toActionError itself throw", () => {
       });
       expect(unhandled).toEqual([]);
 
-      // The rejection escaped before runOnce's own dedupe eviction, so the
-      // post-settle backstop is what releases the slot. Without that release
-      // every later dispatch of this key would join a rejected promise forever.
+      // The post-settle backstop released the slot; without it, every later
+      // dispatch of this key would join a rejected promise forever.
       expect(_internalsForTest().activeDedupes).toBe(0);
       await expect(action.dispatch({ id: "a" })).resolves.toBe("recovered");
     } finally {

@@ -1,8 +1,3 @@
-// Transport injection seam: consumer-provided adapter for streaming/SSE
-// command dispatch. Mirrors the notifier.ts pattern — call
-// configureTransport() at boot to wire up the send function.
-// ---------------------------------------------------------------------------
-
 import { defineAction } from "./define.js";
 import { ActionError } from "./error.js";
 import type { Action, ActionContext, ActionDefinition } from "./types.js";
@@ -38,10 +33,8 @@ export const IDEMPOTENCY_COMMAND_FIELD = "idempotency_key";
 
 let _send: TransportSendFn | undefined;
 
-/**
- * Configure the global transport adapter. Call once at app boot.
- * Only needed if using `transportAction`.
- */
+/** Configure the global transport adapter. Call once at app boot;
+ *  only needed if using `transportAction`. */
 export function configureTransport(fn: TransportSendFn): void {
   _send = fn;
 }
@@ -62,15 +55,9 @@ interface TransportActionDefinition<TArgs, TOp = unknown> extends Omit<
   command: (args: TArgs) => TransportCommand;
 }
 
-/**
- * Build an Action from a transport command descriptor. The generated
- * `run()` calls the configured transport send function and throws
- * {@link ActionError} on `!ok`, so the dispatcher's error branch
- * (notification + rollback) fires consistently.
- *
- * @param def - Transport action definition where `command` replaces `run`.
- * @returns An {@link Action} backed by the configured transport adapter.
- */
+/** Build an Action from a transport command descriptor. The generated
+ *  `run()` calls the configured send function and throws {@link ActionError}
+ *  on `!ok`, so the dispatcher's error branch fires consistently. */
 export function transportAction<TArgs, TOp = unknown>(
   def: TransportActionDefinition<TArgs, TOp>,
 ): Action<TArgs, void> {

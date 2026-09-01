@@ -183,7 +183,6 @@ describe("dedupe + cancel interaction", () => {
     const onSettled2 = vi.fn();
     const h1 = action.dispatch("a");
     const h2 = action.dispatch("a", { onSettled: onSettled2 });
-    // The follower shares the leader's promise, so aborting its handle does nothing.
     h2.abort();
     leaderResolve("done");
     const r1 = await h1;

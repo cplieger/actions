@@ -1,7 +1,6 @@
-// The beforeunload wiring in cleanup.ts. cleanup.test.ts drives the sweep
-// through the _cancelAllForTest() back door, which never proves the listener is
-// actually installed on window — the whole point of the module in production.
-// These tests dispatch a real beforeunload event instead.
+// cleanup.test.ts drives the sweep through the _cancelAllForTest() back door,
+// which never proves the listener is installed on window. These tests
+// dispatch a real beforeunload event instead.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { resetActionFramework } from "./test-helpers/action-test-setup.js";
 vi.mock("./notifier.js", () => ({

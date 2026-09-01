@@ -1,7 +1,6 @@
-// Definition-time guards: the duplicate-name diagnostic and the
-// per-definition dedupe-key identity that prevents two same-named
-// definitions from joining each other's in-flight promise (the
-// cross-definition `as TResult` type-confusion hazard).
+// Pins the duplicate-name diagnostic and the per-definition dedupe-key
+// identity that stops two same-named definitions joining each other's
+// in-flight promise (the cross-definition `as TResult` hazard).
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { resetActionFramework } from "./test-helpers/action-test-setup.js";
 vi.mock("./notifier.js", () => ({
@@ -49,15 +48,14 @@ describe("dedupe key identity", () => {
         }),
     );
     const runB = vi.fn(async () => 42);
-    // Same name, same dedupe key shape, DIFFERENT TResult — the pre-fix
-    // hazard: B joining A's slot would coerce a string into its number type.
+    // Same name and dedupe key shape but DIFFERENT TResult: B joining A's slot
+    // would coerce a string into its number type.
     const a = defineAction<void, string>({ name: "guards.collide", dedupe: true, run: runA });
     const b = defineAction<void, number>({ name: "guards.collide", dedupe: true, run: runB });
     const ha = a.dispatch();
     const hb = b.dispatch();
     releaseA("a-result");
     const [ra, rb] = await Promise.all([ha, hb]);
-    // Both run functions executed — no cross-definition join.
     expect(runA).toHaveBeenCalledTimes(1);
     expect(runB).toHaveBeenCalledTimes(1);
     expect(ra).toBe("a-result");

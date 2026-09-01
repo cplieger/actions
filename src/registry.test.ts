@@ -1,6 +1,3 @@
-// Targeted tests for registry.ts: bounded settled retention, in-flight
-// protection, Set-based listener iteration, pendingCount/recentLog
-// correctness, the transition-table edges, the leak watchdog, _resetForTest.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   record,
@@ -288,10 +285,6 @@ describe("pendingByName index", () => {
   });
 });
 
-// The _pendingTotal invariant-clamp tests were deleted with the clamp: the
-// pending total is now `inflight.size` (membership), so the negative-total
-// state those tests exercised is unrepresentable.
-
 describe("split-shape transition table", () => {
   it("retains the newest 200 terminals, evicting first-record order first", () => {
     for (let i = 0; i < 250; i++) {
@@ -381,8 +374,7 @@ describe("transition atomicity under synchronous observers", () => {
     });
     record(makeInstance({ id: "atomic-1", name: "atom.op", status: "success" }));
     stop();
-    // First run: pending. Settlement flush: success. NEVER undefined (the
-    // old ordering published signals while the id was in neither table).
+    // First run: pending. Settlement flush: success. Never undefined.
     expect(observed).toEqual(["pending", "success"]);
   });
 

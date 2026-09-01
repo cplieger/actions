@@ -1,47 +1,29 @@
-// pollUntil: poll-until-terminal primitive. Sibling to pollAction, but
-// time-boxed rather than a forever periodic refresh: it repeatedly calls
-// `step` on a wait-then-poll cadence until a terminal predicate matches, a
-// max-attempts / wall-clock budget is exhausted, or an AbortSignal fires.
-//
-// Unlike pollAction it deliberately has NO pauseWhenHidden / refreshOnFocus —
-// a device-flow / download-progress poll is a bounded flow the caller drives
-// to completion, not a background refresh that should pause while the tab is
-// hidden. That distinction is the whole reason pollAction does not fit.
-// ---------------------------------------------------------------------------
+// Unlike pollAction, no pauseWhenHidden/refreshOnFocus: this is a bounded
+// flow the caller drives to completion, not a background refresh.
 
-/** Configuration for {@link pollUntil}. Controls cadence, the terminal
- *  predicate, optional attempt/time budgets, transient-failure backoff, and
- *  cancellation. */
 export interface PollUntilOptions<T> {
-  /** Quiet window before each poll in ms. */
   readonly intervalMs: number;
-  /** Terminal predicate: return true on a result that ends the poll. */
+  /** Returns true on a result that ends the poll. */
   readonly until: (result: T) => boolean;
-  /** Stop after this many poll attempts. 0/undefined = unlimited. */
+  /** 0/undefined = unlimited. */
   readonly maxAttempts?: number;
-  /** Overall wall-clock deadline in ms, measured from the call. */
   readonly timeoutMs?: number;
-  /** Exponential backoff applied to the wait after consecutive transient
-   *  failures (a null result or a throw). Reset on the next good poll. */
+  /** Applied to the wait after consecutive transient failures (null result or throw). */
   readonly backoff?: { readonly factor: number; readonly maxMs: number };
-  /** Called for a non-terminal successful poll (a non-null result that does
-   *  not satisfy `until`). */
+  /** Fires for a non-terminal successful poll. */
   readonly onPoll?: (result: T) => void;
-  /** Called when a poll is a transient failure (step returned null or threw). */
+  /** Fires on a transient failure (step returned null or threw). */
   readonly onTransientError?: () => void;
-  /** Abort the poll early. A pre-aborted signal resolves `aborted` without
-   *  ever calling `step`. */
+  /** A pre-aborted signal resolves `aborted` without calling `step`. */
   readonly signal?: AbortSignal;
 }
 
-/** Terminal outcome of {@link pollUntil}. */
 export type PollUntilOutcome<T> =
   | { readonly status: "done"; readonly result: T }
   | { readonly status: "timeout" }
   | { readonly status: "aborted" };
 
-/** Sleep for `ms`, resolving early (never rejecting) if `signal` fires. The
- *  caller re-checks `signal.aborted` after waking to decide what to do. */
+/** Resolves early (never rejects) if `signal` fires; caller re-checks `signal.aborted`. */
 function sleepWithSignal(ms: number, signal: AbortSignal): Promise<void> {
   if (signal.aborted) {
     return Promise.resolve();
@@ -64,30 +46,7 @@ function sleepWithSignal(ms: number, signal: AbortSignal): Promise<void> {
   });
 }
 
-/**
- * Repeatedly call `step` on a wait-then-poll cadence until it yields a
- * terminal result, a budget is exhausted, or the signal aborts.
- *
- * Each iteration waits the current delay (abortable), then polls. A null
- * result or a throw is a transient failure — `onTransientError` fires and,
- * when `backoff` is set, the next wait grows. A non-null result resets the
- * backoff; if it satisfies `until` the poll resolves `done`, otherwise
- * `onPoll` fires and polling continues.
- *
- * @example
- * ```ts
- * const outcome = await pollUntil(
- *   (signal) => apiPoll("/api/device", signal),
- *   {
- *     intervalMs: 5000,
- *     until: (r) => r.status !== "pending",
- *     maxAttempts: 60,
- *     backoff: { factor: 2, maxMs: 60_000 },
- *     signal,
- *   },
- * );
- * ```
- */
+/** A null result or a throw is a transient failure (backs off if `backoff` is set). */
 export async function pollUntil<T>(
   step: (signal: AbortSignal) => Promise<T | null>,
   opts: PollUntilOptions<T>,
@@ -95,7 +54,6 @@ export async function pollUntil<T>(
   const { intervalMs, until, maxAttempts, timeoutMs, backoff, onPoll, onTransientError } = opts;
   const signal = opts.signal ?? new AbortController().signal;
 
-  // (1) Pre-aborted: bail before any wait or step call.
   if (signal.aborted) {
     return { status: "aborted" };
   }
@@ -105,14 +63,12 @@ export async function pollUntil<T>(
   let failures = 0;
 
   for (;;) {
-    // (2) Wait the (possibly backed-off) delay, aborting early on signal.
     const delay =
       backoff !== undefined && failures > 0
         ? Math.min(intervalMs * Math.pow(backoff.factor, failures), backoff.maxMs)
         : intervalMs;
     await sleepWithSignal(delay, signal);
 
-    // (3) Post-wait gates: abort, then attempt / time budgets.
     // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- aborted flips during the awaited sleep
     if (signal.aborted) {
       return { status: "aborted" };
@@ -125,7 +81,6 @@ export async function pollUntil<T>(
       return { status: "timeout" };
     }
 
-    // (4) Poll. A throw or null result is transient: back off and retry.
     let result: T | null;
     try {
       result = await step(signal);

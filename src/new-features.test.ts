@@ -16,13 +16,9 @@ beforeEach(() => {
   resetCleanup();
 });
 afterEach(() => {
-  // Guard against a fake-timer test leaking into the next one.
   vi.useRealTimers();
 });
 
-// ---------------------------------------------------------------------------
-// 1. Definition-level onSuccess / onError / onSettled (TanStack pattern)
-// ---------------------------------------------------------------------------
 describe("definition-level callbacks (TanStack pattern)", () => {
   it("onSuccess fires on every successful dispatch", async () => {
     const defOnSuccess = vi.fn();
@@ -136,9 +132,6 @@ describe("definition-level callbacks (TanStack pattern)", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// 2. Per-dispatch abort handle (RTK pattern)
-// ---------------------------------------------------------------------------
 describe("per-dispatch abort handle (RTK pattern)", () => {
   it("dispatch() returns a DispatchHandle with abort()", () => {
     const action = defineAction({ name: "handle.shape", run: async () => "ok" });
@@ -211,9 +204,6 @@ describe("per-dispatch abort handle (RTK pattern)", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// 3. timeout option on ActionDefinition
-// ---------------------------------------------------------------------------
 describe("timeout option on ActionDefinition", () => {
   it("aborts run() after timeout ms", async () => {
     const action = defineAction({
@@ -302,9 +292,6 @@ describe("timeout option on ActionDefinition", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// 4. subscribeByName + getActionLog public exports
-// ---------------------------------------------------------------------------
 describe("subscribeByName (public API)", () => {
   it("receives events only for the named action", async () => {
     const events: string[] = [];

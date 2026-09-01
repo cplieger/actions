@@ -94,7 +94,7 @@ describe("apiAction", () => {
     const [url, opts] = mockFetch.mock.calls[0]!;
     expect(url).toBe("/api/config");
     expect(opts.method).toBe("PUT");
-    expect(opts.body).toBe("providers:\n  enabled: true\n"); // NOT JSON-encoded
+    expect(opts.body).toBe("providers:\n  enabled: true\n");
     expect((opts.headers as Headers).get("content-type")).toBe("text/yaml");
   });
 
@@ -169,13 +169,9 @@ describe("apiAction — unexpected empty body warning", () => {
 });
 
 describe("apiAction — a def timeout aborts the run signal but not the dispatch", () => {
-  // def.timeout composes AbortSignal.timeout() with the dispatch's OWN
-  // controller and hands the composite to fetch as the caller signal. When the
-  // def timeout wins, fetch sees an aborted caller signal (so its envelope is
-  // `{ status: 0, code: "cancelled" }`) while ac.signal is still live — so
-  // define.ts classifies the dispatch as an ERROR and keeps the mapped
-  // ActionError. This is the one path on which api.ts's `code === "cancelled"`
-  // arm is observable: it is why that arm must not be deleted.
+  // def.timeout aborts the caller signal fetch sees while the dispatch's own
+  // AbortSignal stays live, so define.ts classifies it as an ERROR. The only
+  // path that observes api.ts's `code === "cancelled"` arm.
   it("surfaces fetch's cancelled envelope as a status-less error coded 'cancelled'", async () => {
     mockFetch.mockImplementation(
       (_url: string, init: RequestInit) =>

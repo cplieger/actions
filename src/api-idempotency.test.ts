@@ -1,4 +1,3 @@
-// Tests for apiAction idempotency key and edge-case response handling.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 vi.mock("./notifier.js", () => ({

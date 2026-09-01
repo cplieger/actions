@@ -1,4 +1,3 @@
-// Tests for pollUntil — the poll-until-terminal helper.
 import { describe, it, expect, vi, afterEach } from "vitest";
 
 import { pollUntil } from "./poll-until.js";

@@ -1,9 +1,7 @@
-// Interaction rules between defineAction's features that the rest of the suite
-// exercises but does not pin: WHEN the dedupe slot is released relative to the
-// terminal callbacks (so a retry dispatched from onError/onSettled is real work
-// and not a join onto the dispatch that just died), what a joiner of an aborted
-// queued primary is told, which failures may still schedule a retry, and what
-// the notification/rollback fault handlers report.
+// Pins WHEN the dedupe slot is released relative to the terminal callbacks
+// (so a retry from onError/onSettled is real work, not a join onto the dead
+// dispatch), what a joiner of an aborted queued primary is told, and what the
+// notification/rollback fault handlers report.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 vi.mock("./notifier.js", () => ({
   configure: vi.fn(),
@@ -49,8 +47,7 @@ function gate<T>(): Gate<T> {
   return { promise, resolve, reject };
 }
 
-/** Drain the microtask queue AND one macrotask turn, so every `.finally()`
- *  bookkeeping callback registered inside dispatch() has run. */
+/** Drains the microtask queue plus one macrotask turn. */
 function settleTurn(): Promise<void> {
   return new Promise<void>((r) => {
     setTimeout(r, 0);
@@ -149,14 +146,12 @@ describe("the dedupe slot is released before the terminal callbacks fire", () =>
       },
     });
 
-    // First dispatch fails; its onError starts a replacement that is still in
-    // flight. The failed dispatch's own dedupe cleanup must leave the
-    // replacement's slot alone.
+    // onError starts a replacement dispatch; the first dispatch's own dedupe
+    // cleanup must leave the replacement's slot alone.
     await action.dispatch({ id: "a" });
     await settleTurn();
     expect(runs).toHaveLength(2);
 
-    // A third dispatch of the same args must collapse onto the replacement.
     const joiner = action.dispatch({ id: "a" });
     second.resolve("recovered");
 
@@ -188,7 +183,7 @@ describe("the dedupe slot is released before the terminal callbacks fire", () =>
       expect(runs).toHaveLength(1);
     });
     first.abort();
-    runs[0]?.("late"); // run() completes anyway, after the abort
+    runs[0]?.("late"); // completes anyway, after the abort
 
     await expect(first).resolves.toBeNull();
     await vi.waitFor(() => {
@@ -320,8 +315,8 @@ describe("a dispatch that fails in optimistic() before its dedupe slot is publis
       error: { message: "snapshot failed", code: "quota_exceeded" },
     };
     await expect(first.outcome).resolves.toEqual(failure);
-    // The same failure, but reached by doing its own work: the first dispatch
-    // had already settled, so there was no in-flight dispatch to join.
+    // Same failure, reached by its own work: the first had already settled,
+    // so there was no in-flight dispatch to join.
     await expect(duplicate.outcome).resolves.toEqual(failure);
     expect(snapshots).toBe(2);
     expect(recentLog().filter((e) => e.name === "optimistic.same_tick_duplicate")).toHaveLength(2);
@@ -404,9 +399,8 @@ describe("a dispatch that fails in optimistic() before its dedupe slot is publis
     });
 
     action.dispatch({ id: "a" });
-    // Nothing is in flight: the optimistic failure settled synchronously, and it
-    // published no dedupe slot. cancel() has nothing to change, and the
-    // same-tick duplicate is a dispatch of its own.
+    // The optimistic failure settled synchronously and published no dedupe
+    // slot, so cancel() has nothing to change here.
     action.cancel();
     const duplicate = action.dispatch({ id: "a" });
 
@@ -523,7 +517,7 @@ describe("an aborted dispatch schedules no further retry", () => {
     });
 
     const dispatched = action.dispatch();
-    await new Promise((r) => setTimeout(r, 20)); // park inside the offline wait
+    await new Promise((r) => setTimeout(r, 20)); // parked inside the offline wait
     expect(attempts).toBe(1);
     action.cancel();
 

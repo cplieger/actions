@@ -1,23 +1,7 @@
-// ActionError: thrown by an action's run() function to signal a typed
-// failure. Carries optional HTTP status, server-side error code, and
-// cause chain for diagnostics.
-//
-// Public surface:
-//   - ActionError       : structured error class
-//   - hasErrorString    : narrows parsed JSON bodies with `{ error: "..." }`
-//   - classifyFetchError: normalize fetch catch-block errors
-//   - retryNetwork      : preset classifier — network/timeout/transient HTTP
-//
-// Internal:
-//   - toActionError: coerce thrown values into ActionErrorLike (used by define.ts)
-// ---------------------------------------------------------------------------
-
 import type { ActionErrorLike } from "./types.js";
 
 /**
  * Structured error thrown from an action's `run()` to signal a typed failure.
- * Carries optional HTTP status and server-side error code for downstream
- * classification (retry eligibility, notification formatting, telemetry).
  *
  * @example
  * ```ts
@@ -44,7 +28,7 @@ export class ActionError extends Error implements ActionErrorLike {
   }
 }
 
-/** Type predicate: true when `v` is a non-null object with a string `error` property. */
+/** True when `v` is a non-null object with a string `error` property. */
 export function hasErrorString(v: unknown): v is { error: string } {
   if (typeof v !== "object" || v === null || !("error" in v)) {
     return false;
@@ -52,7 +36,7 @@ export function hasErrorString(v: unknown): v is { error: string } {
   return typeof v.error === "string";
 }
 
-/** Coerce any thrown value into an ActionErrorLike snapshot. Internal. */
+/** Coerce any thrown value into an ActionErrorLike snapshot. */
 export function toActionError(e: unknown): ActionErrorLike {
   if (e instanceof ActionError) {
     const r: { message: string; status?: number; code?: string; cause?: unknown } = {
@@ -136,13 +120,9 @@ export function toActionError(e: unknown): ActionErrorLike {
 }
 
 /**
- * Classify a caught fetch error into an ActionError with a canonical code.
- *
- * Classification priority:
- *  1. Signal already aborted → "cancelled"
- *  2. DOMException TimeoutError / AbortError with live signal → "timeout"
- *  3. TypeError → "network" (browsers throw TypeError for network failures)
- *  4. Everything else → "network"
+ * Classify a caught fetch error into an ActionError with a canonical code:
+ * aborted signal -> "cancelled", DOMException Timeout/AbortError -> "timeout",
+ * else -> "network".
  */
 export function classifyFetchError(e: unknown, signal: AbortSignal): ActionError {
   if (signal.aborted) {
@@ -163,10 +143,7 @@ export function classifyFetchError(e: unknown, signal: AbortSignal): ActionError
 /** HTTP statuses that represent transient server-side conditions. */
 const TRANSIENT_STATUSES = new Set([408, 429, 502, 503, 504]);
 
-/**
- * Retry classifier preset: matches network/timeout failures and transient
- * HTTP statuses (408, 429, 502, 503, 504). Always excludes cancellation.
- */
+/** Retry classifier preset: network/timeout failures and transient HTTP statuses. */
 export function retryNetwork(err: ActionErrorLike): boolean {
   if (err.code === "cancelled") {
     return false;

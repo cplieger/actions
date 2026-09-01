@@ -1,9 +1,3 @@
-// Action framework types: defines the contract between callers, the
-// dispatcher, and observers. Pure types — no imports, no runtime
-// behavior — so any module in the codebase can depend on this without
-// pulling in transport / notification / store.
-// ---------------------------------------------------------------------------
-
 /** Lifecycle status of a single dispatched action instance.
  *
  *  - `"pending"` — optimistic ran (if any), run() in flight

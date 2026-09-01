@@ -1,5 +1,3 @@
-// Tests for withAsyncFeedback — adapted from vibekit's async-button.test.ts,
-// plus coverage for the injectable-glyph generalization.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 import { withAsyncFeedback } from "./async-feedback.js";
@@ -12,10 +10,8 @@ function makeButton(html = "Click me"): HTMLButtonElement {
   return btn;
 }
 
-// NOTE: this block runs first on purpose. The live region is lazily created
-// once and appended to <body> (vibekit's exact behavior); a later makeButton()
-// call replaces the body and detaches it. Asserting on it before any
-// makeButton() eviction keeps the test independent of module-level state.
+// Runs first on purpose: a later makeButton() call replaces <body> and
+// detaches the lazily-created live region, so this must run before any eviction.
 describe("withAsyncFeedback — live region announce", () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -254,8 +250,6 @@ describe("withAsyncFeedback — target slot + persist", () => {
     return { btn, icon, label };
   }
 
-  // (a) target mode: only the slot animates; the label sibling is untouched;
-  // the ORIGINAL slot node (same reference) is restored on default reset.
   it("replaces only the target slot, preserves the label, restores the original slot on reset", async () => {
     const { btn, icon, label } = makeIconButton();
     let resolveFn: (() => void) | undefined;
@@ -268,7 +262,6 @@ describe("withAsyncFeedback — target slot + persist", () => {
       renderSuccess: () => mk("success-slot"),
     });
 
-    // Pending: the icon slot is swapped out for the pending node; label intact.
     expect(btn.querySelector(".pending-slot")).not.toBeNull();
     expect(btn.contains(icon)).toBe(false);
     expect(btn.contains(label)).toBe(true);
@@ -279,7 +272,6 @@ describe("withAsyncFeedback — target slot + persist", () => {
     resolveFn!();
     await promise;
 
-    // Success: pending node swapped for success node; label still present.
     expect(btn.querySelector(".success-slot")).not.toBeNull();
     expect(btn.querySelector(".pending-slot")).toBeNull();
     expect(btn.contains(label)).toBe(true);
@@ -288,7 +280,7 @@ describe("withAsyncFeedback — target slot + persist", () => {
 
     vi.advanceTimersByTime(1200);
 
-    // Reset: the EXACT original icon node is restored (identity), not a clone.
+    // Identity check: the exact original node is restored, not a clone.
     expect(btn.children[0]).toBe(icon);
     expect(btn.contains(icon)).toBe(true);
     expect(btn.querySelector(".success-slot")).toBeNull();
@@ -297,7 +289,6 @@ describe("withAsyncFeedback — target slot + persist", () => {
     expect(btn.disabled).toBe(false);
   });
 
-  // (b) target + resetMs:0 — persist the outcome glyph; button re-enabled.
   it("target + resetMs:0 persists the outcome glyph and re-enables the button", async () => {
     const { btn, icon, label } = makeIconButton();
     await withAsyncFeedback(btn, () => Promise.resolve(), {
@@ -310,7 +301,6 @@ describe("withAsyncFeedback — target slot + persist", () => {
     expect(btn.querySelector(".success-slot")).not.toBeNull();
     expect(btn.disabled).toBe(false);
 
-    // No revert timer was scheduled: advancing time changes nothing.
     vi.advanceTimersByTime(5000);
     expect(btn.querySelector(".success-slot")).not.toBeNull();
     expect(btn.contains(icon)).toBe(false);
@@ -318,7 +308,6 @@ describe("withAsyncFeedback — target slot + persist", () => {
     expect(btn.dataset["asyncStatus"]).toBe("success");
   });
 
-  // (c) error path in target mode -> renderError node.
   it("target mode error path swaps in the error node", async () => {
     const { btn, icon } = makeIconButton();
     await withAsyncFeedback(btn, () => Promise.reject(new Error("nope")), {
@@ -337,7 +326,6 @@ describe("withAsyncFeedback — target slot + persist", () => {
     expect(btn.dataset["asyncStatus"]).toBeUndefined();
   });
 
-  // (d) persist on the WHOLE-BUTTON path (resetMs:0, no target).
   it("resetMs:0 on the whole-button path persists the glyph (no revert)", async () => {
     const btn = makeButton("<span>Original</span>");
     await withAsyncFeedback(btn, () => Promise.resolve(), { resetMs: 0 });
@@ -352,7 +340,6 @@ describe("withAsyncFeedback — target slot + persist", () => {
     expect(btn.dataset["asyncStatus"]).toBe("success");
   });
 
-  // (e) re-entry guard in target mode: second call while pending is a no-op.
   it("rejects re-entry while pending in target mode (fn once, no double swap)", async () => {
     const { btn, icon } = makeIconButton();
     const fn = vi.fn(() => new Promise<void>((res) => setTimeout(res, 100)));
@@ -374,9 +361,6 @@ describe("withAsyncFeedback — target slot + persist", () => {
     expect(fn).toHaveBeenCalledTimes(1);
   });
 
-  // (f) REGRESSION GUARD: whole-button default path is unchanged — single
-  // glyph via replaceChildren, disabled held through the glyph hold, content
-  // and disabled both restored at the default 1200ms reset.
   it("regression: whole-button default path still replaceChildren + reverts", async () => {
     const btn = makeButton("<span>Original</span>");
     await withAsyncFeedback(btn, () => Promise.resolve(), {
@@ -387,8 +371,7 @@ describe("withAsyncFeedback — target slot + persist", () => {
     expect(btn.querySelector(".success-slot")).not.toBeNull();
     expect(btn.textContent).not.toContain("Original");
     expect(btn.dataset["asyncStatus"]).toBe("success");
-    // Default path keeps the button disabled during the glyph hold (it is
-    // re-enabled only at reset) — this is the unchanged behavior persist diverges from.
+    // Persist (resetMs:0) diverges from this: disabled here until reset.
     expect(btn.disabled).toBe(true);
 
     vi.advanceTimersByTime(1200);
@@ -432,9 +415,6 @@ describe("withAsyncFeedback — focus restore", () => {
     vi.useRealTimers();
   });
 
-  // A keyboard user activates the button; disabling it during the async cycle
-  // drops focus away from it. When the timed reset re-enables the button,
-  // focus must return so the user does not lose their place.
   it("restores focus to a focused button after the timed reset re-enables it", async () => {
     const btn = makeButton();
     btn.focus();
@@ -446,16 +426,12 @@ describe("withAsyncFeedback — focus restore", () => {
     });
     const promise = withAsyncFeedback(btn, () => work);
 
-    // withAsyncFeedback disabled the button, and the browser drops focus off a
-    // disabled element by itself, so this asserts real behavior rather than a
-    // simulation of it.
+    // The browser drops focus off a disabled element by itself.
     expect(document.activeElement).not.toBe(btn);
 
     resolveFn!();
     await promise;
 
-    // Outcome glyph is showing; the default path keeps the button disabled
-    // until the reset timer fires.
     expect(btn.disabled).toBe(true);
 
     vi.advanceTimersByTime(1200);
@@ -463,8 +439,6 @@ describe("withAsyncFeedback — focus restore", () => {
     expect(document.activeElement).toBe(btn);
   });
 
-  // The persist path (resetMs <= 0) re-enables the button at outcome time
-  // rather than via a timer, so focus restore must happen there too.
   it("restores focus via the persist path (resetMs:0)", async () => {
     const btn = makeButton();
     btn.focus();
@@ -484,8 +458,6 @@ describe("withAsyncFeedback — focus restore", () => {
     expect(document.activeElement).toBe(btn);
   });
 
-  // Guard: if the user moves focus to a competing element while the operation
-  // is in flight, the reset must NOT yank focus back to the button.
   it("does not steal focus back when it moved to another element during the cycle", async () => {
     const btn = makeButton();
     const other = document.createElement("input");
@@ -499,7 +471,6 @@ describe("withAsyncFeedback — focus restore", () => {
     });
     const promise = withAsyncFeedback(btn, () => work);
 
-    // User tabs/clicks into another field mid-flight.
     other.focus();
     expect(document.activeElement).toBe(other);
 
@@ -507,13 +478,10 @@ describe("withAsyncFeedback — focus restore", () => {
     await promise;
     vi.advanceTimersByTime(1200);
 
-    // Focus stays on the element the user moved to.
     expect(document.activeElement).toBe(other);
     expect(btn.disabled).toBe(false);
   });
 
-  // A button that did NOT have focus when the cycle started must not gain
-  // focus when it re-enables.
   it("does not grab focus for a button that was never focused", async () => {
     const btn = makeButton();
     const other = document.createElement("input");
@@ -529,11 +497,9 @@ describe("withAsyncFeedback — focus restore", () => {
   });
 
   it("does not grab focus when never focused even if nothing else holds focus", async () => {
-    // Isolates the `hadFocus` guard: nothing holds focus, so
-    // document.activeElement is <body> — a restore-eligible state, so only the
-    // hadFocus check stops the button stealing focus on completion. (The sibling
-    // "moved to another element" test cannot isolate this: there the activeElement
-    // check blocks restore regardless of hadFocus.)
+    // Isolates `hadFocus`: activeElement is <body> here (restore-eligible), so
+    // only hadFocus stops the steal. The sibling "moved to another element"
+    // test can't isolate this — its activeElement check blocks regardless.
     const btn = makeButton();
     expect(document.activeElement).toBe(document.body);
 

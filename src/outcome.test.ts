@@ -1,8 +1,5 @@
-// DispatchHandle.outcome: the opt-in typed terminal accessor. Verifies the
-// three-way discrimination (success / error / cancelled) on every terminal
-// path — run, retry, optimistic failure, abort, scope early-cancel, and the
-// dedupe-join follower — including the success-null case the legacy
-// `TResult | null` resolution cannot distinguish.
+// Verifies success/error/cancelled discrimination across every terminal path,
+// including the success-null case the legacy `TResult | null` resolution can't.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { resetActionFramework } from "./test-helpers/action-test-setup.js";
 vi.mock("./notifier.js", () => ({

@@ -1,7 +1,3 @@
-// defineAction: the lifecycle runner. Takes an ActionDefinition,
-// returns an Action whose dispatch() executes the full lifecycle.
-// ---------------------------------------------------------------------------
-
 import { notifyError, notifySuccess } from "./notifier.js";
 import { toActionError } from "./error.js";
 import { record } from "./registry.js";
@@ -26,12 +22,10 @@ import type {
 
 let instanceCounter = 0;
 
-/** Monotonic per-definition id, prefixed onto dedupe keys so two definitions
- *  that happen to share a name can never join each other's in-flight promise
- *  (the cross-definition `as TResult` type-confusion hazard). */
+// Prefixed onto dedupe keys so two definitions sharing a name can never join
+// each other's in-flight promise (cross-definition `as TResult` hazard).
 let defCounter = 0;
 
-/** Names seen by defineAction, for the duplicate-name diagnostic. */
 const registeredNames = new Set<string>();
 
 const NO_OPTS = Object.freeze({}) as DispatchOptions;
@@ -39,8 +33,7 @@ const NOOP = (): void => {
   /* noop */
 };
 
-/** Create the appropriate DOMException for an aborted signal, preserving
- *  TimeoutError when the signal was aborted by AbortSignal.timeout(). */
+/** Preserves TimeoutError when aborted via AbortSignal.timeout(). */
 function signalAbortError(signal: AbortSignal): DOMException {
   if (signal.reason instanceof DOMException && signal.reason.name === "TimeoutError") {
     return signal.reason;
@@ -69,7 +62,6 @@ function generateIdempotencyKey(): string {
 
 const scopeChains = new Map<string, Promise<unknown>>();
 
-/** Create a DispatchHandle: a Promise augmented with abort() + outcome. */
 function makeHandle<T>(
   promise: Promise<T | null>,
   abortFn: () => void,
@@ -89,9 +81,6 @@ interface DedupeSlot {
 }
 const activeDedupes = new Map<string, DedupeSlot>();
 
-/**
- * Create an action from a declarative definition.
- */
 export function defineAction<TArgs, TResult, TOp = unknown>(
   def: ActionDefinition<TArgs, TResult, TOp>,
 ): Action<TArgs, TResult> {
@@ -135,8 +124,7 @@ export function defineAction<TArgs, TResult, TOp = unknown>(
       });
     }
   }
-  /** Fire the definition-level then per-dispatch success callbacks — the one
-   *  block shared by the executing path and the dedupe-join path. */
+  // Shared by the executing path and the dedupe-join path.
   function fireSuccessCallbacks(
     result: TResult,
     args: TArgs,
@@ -150,8 +138,7 @@ export function defineAction<TArgs, TResult, TOp = unknown>(
       });
     }
   }
-  /** Fire the definition-level then per-dispatch error callbacks — the one
-   *  block shared by the executing path and the dedupe-join path. */
+  // Shared by the executing path and the dedupe-join path.
   function fireErrorCallbacks(
     err: ActionErrorLike,
     args: TArgs,
@@ -170,9 +157,7 @@ export function defineAction<TArgs, TResult, TOp = unknown>(
     args: TArgs,
     opts: DispatchOptions<TArgs, TResult> = NO_OPTS,
   ): DispatchHandle<TResult> {
-    // Typed terminal outcome, resolved exactly once at whichever terminal
-    // point this dispatch reaches. Kept OUT of the legacy promise chain so
-    // existing resolution timing is untouched.
+    // Kept OUT of the legacy promise chain so existing resolution timing is untouched.
     let resolveOutcome!: (o: ActionOutcome<TResult>) => void;
     const outcomePromise = new Promise<ActionOutcome<TResult>>((r) => {
       resolveOutcome = r;
@@ -219,8 +204,7 @@ export function defineAction<TArgs, TResult, TOp = unknown>(
             return v;
           },
           (reason: unknown) => {
-            // Defensive: runOnce never rejects; a rejection here means the
-            // shared promise itself failed. Surface it as an error outcome.
+            // runOnce never rejects; a rejection here means the shared promise itself failed.
             resolveOutcome({ status: "error", error: toActionError(reason) });
             fireSettledHooks();
             return null;
@@ -299,12 +283,10 @@ export function defineAction<TArgs, TResult, TOp = unknown>(
       result = Promise.race([next, earlyCancel]);
     }
 
-    // A dedupe slot must describe a dispatch that is still running. runOnce is
-    // called synchronously above, and its optimistic-failure and
-    // aborted-before-start paths settle without ever awaiting — those have
-    // already recorded, fired their callbacks and left `inFlight`, so
-    // publishing a slot for them would hand the next dispatch of the same key
-    // a finished dispatch's error instead of letting it work.
+    // A dedupe slot must describe a dispatch that is still running: runOnce's
+    // synchronous failure paths already left `inFlight`, so publishing a slot
+    // for them would hand the next same-key dispatch a finished error instead
+    // of letting it run.
     if (dedupeKey !== null && dedupeEntry !== null && inFlight.has(id)) {
       dedupeEntry.promise = result;
       activeDedupes.set(dedupeKey, dedupeEntry);
@@ -334,9 +316,8 @@ export function defineAction<TArgs, TResult, TOp = unknown>(
       return null;
     }
     const argKey = typeof cfg === "function" ? cfg(args) : safeStringify(args);
-    // defId prefix: dedupe joins are per-definition by contract. Without it,
-    // two definitions sharing a name would join each other's in-flight
-    // promise and coerce a foreign result via `as TResult`.
+    // Without the defId prefix, two same-named definitions would join each
+    // other's in-flight promise and coerce a foreign result via `as TResult`.
     return `${String(defId)}::${def.name}::${argKey}`;
   }
 
@@ -406,7 +387,6 @@ export function defineAction<TArgs, TResult, TOp = unknown>(
     const ctx: ActionContext =
       idemKey !== null ? { instanceID: id, idempotencyKey: idemKey } : { instanceID: id };
 
-    // Compose timeout signal if configured
     const runSignal =
       def.timeout !== undefined
         ? AbortSignal.any([ac.signal, AbortSignal.timeout(def.timeout)])
@@ -752,8 +732,6 @@ export function defineAction<TArgs, TResult, TOp = unknown>(
   return action;
 }
 
-/** Test-only: reset the instance/definition counters + name registry +
- *  scope chains + dedupe map. */
 export function _resetForTest(): void {
   instanceCounter = 0;
   defCounter = 0;
@@ -763,7 +741,6 @@ export function _resetForTest(): void {
   activeDedupes.clear();
 }
 
-/** Test-only: expose internal map sizes for leak verification. */
 export function _internalsForTest(): { scopeChains: number; activeDedupes: number } {
   return { scopeChains: scopeChains.size, activeDedupes: activeDedupes.size };
 }

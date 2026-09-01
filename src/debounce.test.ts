@@ -122,7 +122,6 @@ describe("debouncedDispatch — leading", () => {
     const { action } = makeAction();
     const debounced = debouncedDispatch(action, { wait: 100, leading: true });
     debounced("a");
-    // Leading edge fired; the window is pure cooldown — nothing scheduled.
     expect(debounced.isPending()).toBe(false);
     vi.advanceTimersByTime(100);
     expect(debounced.isPending()).toBe(false);
@@ -136,7 +135,6 @@ describe("debouncedDispatch — leading", () => {
     debounced("b");
     expect(debounced.isPending()).toBe(true);
     vi.advanceTimersByTime(100);
-    // "b" fired at the trailing edge; the re-armed window is cooldown only.
     expect(debounced.isPending()).toBe(false);
   });
 });
@@ -168,7 +166,6 @@ describe("debouncedDispatch — flush() releases the timer and the pending flag"
     debounced.flush();
     vi.advanceTimersByTime(50);
     debounced("b");
-    // The timer flush() discarded would have fired here, dragging "b" 50ms early.
     vi.advanceTimersByTime(50);
     expect(run).toHaveBeenCalledTimes(1);
     vi.advanceTimersByTime(50);
@@ -197,8 +194,7 @@ describe("debouncedDispatch — flush() releases the timer and the pending flag"
     expect(run).toHaveBeenCalledTimes(2);
 
     debounced("b");
-    // The flush restarted the quiet window, so "b" waits for the trailing edge
-    // instead of firing on a leading edge of its own.
+    // The flush restarted the quiet window, so "b" waits for the trailing edge.
     expect(run).toHaveBeenCalledTimes(2);
     expect(debounced.isPending()).toBe(true);
 
@@ -209,10 +205,8 @@ describe("debouncedDispatch — flush() releases the timer and the pending flag"
 });
 
 describe("debouncedDispatch — an action whose args are undefined", () => {
-  // A no-argument action (`defineAction<undefined, …>`) is a shape this repo
-  // already uses. Its scheduled args ARE `undefined`, so "nothing coalesced"
-  // cannot be spelled with `undefined` — a call whose args are undefined is
-  // still a call, and dropping it loses the work silently.
+  // Scheduled args ARE `undefined` here, so "nothing coalesced" can't be
+  // spelled with `undefined` without silently dropping a real call.
   function makeVoidAction() {
     const run = vi.fn(() => Promise.resolve("ok"));
     const action = defineAction<undefined, string>({ name: "test.debounce.void", run });

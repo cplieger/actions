@@ -161,7 +161,6 @@ describe("cross-action scope serialization without cancel", () => {
     await Promise.resolve();
     expect(order).toEqual(["A-start", "B-start"]);
 
-    // A has finished and left the lane; C must still queue behind B.
     const pC = actionC.dispatch();
     await Promise.resolve();
     await Promise.resolve();
