@@ -10,6 +10,7 @@ vi.mock("./notifier.js", () => ({
 }));
 import { defineAction } from "./define.js";
 import { bindLoadingState } from "./loading.js";
+import { blurredOff } from "./test-helpers/focus.js";
 
 beforeEach(() => {
   resetActionFramework();
@@ -224,8 +225,10 @@ describe("bindLoadingState — focus restoration", () => {
     const btn = attachedButton();
     btn.focus();
     bindLoadingState("load.focus_back", btn);
+    const blurred = blurredOff(btn);
     const p = action.dispatch({});
     // Browser drops focus to <body> on disable by itself; not simulated here.
+    await blurred;
     expect(document.activeElement).toBe(document.body);
     settle();
     await p;

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 import { withAsyncFeedback } from "./async-feedback.js";
+import { blurredOff } from "./test-helpers/focus.js";
 
 function makeButton(html = "Click me"): HTMLButtonElement {
   const btn = document.createElement("button");
@@ -424,9 +425,11 @@ describe("withAsyncFeedback — focus restore", () => {
     const work = new Promise<void>((res) => {
       resolveFn = res;
     });
+    const blurred = blurredOff(btn);
     const promise = withAsyncFeedback(btn, () => work);
 
     // The browser drops focus off a disabled element by itself.
+    await blurred;
     expect(document.activeElement).not.toBe(btn);
 
     resolveFn!();
@@ -447,8 +450,10 @@ describe("withAsyncFeedback — focus restore", () => {
     const work = new Promise<void>((res) => {
       resolveFn = res;
     });
+    const blurred = blurredOff(btn);
     const promise = withAsyncFeedback(btn, () => work, { resetMs: 0 });
 
+    await blurred;
     expect(document.activeElement).not.toBe(btn);
 
     resolveFn!();
