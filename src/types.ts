@@ -77,6 +77,23 @@ export interface RetryConfig {
 /** Standard retry config: 2 retries, 300ms initial delay. */
 export const RETRY_STANDARD: RetryConfig = { count: 2, delay: 300 } as const;
 
+/** Declarative description of an action, handed to defineAction() once and
+ *  consulted on every dispatch.
+ *
+ *  `name` and `run` are the only required members; each of the rest opts into
+ *  one lifecycle behaviour. The function-valued ones (`optimistic`, `scope`,
+ *  `dedupe`, `idempotencyKey`, and the notification specs) are re-evaluated per
+ *  dispatch, so they may derive from args.
+ *
+ *  Hooks are invoked defensively: a throw from `onSuccess`, `onError`,
+ *  `onSettled`, `rollback` or a notification spec is logged and leaves the
+ *  dispatch's outcome unchanged. `optimistic` is the exception — a throw there
+ *  fails the dispatch and run() never starts, with code `"optimistic_failed"`
+ *  unless the thrown error carries a code of its own.
+ *
+ *  `scope`, `dedupe` and the handle's abort() answer three different
+ *  concurrency questions: serialize same-key dispatches, collapse same-key
+ *  dispatches into one in-flight promise, and cancel a single dispatch. */
 export interface ActionDefinition<TArgs, TResult, TOp = unknown> {
   /** Stable identifier, e.g. "chat.delete", "files.create".
    *  Used in the registry log + as a default notification prefix. */

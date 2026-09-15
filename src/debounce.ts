@@ -4,6 +4,12 @@ import type { Action } from "./types.js";
 // empty-state marker; this sentinel is module-private and unforgeable as TArgs.
 const NO_ARGS = Symbol("debounce.noArgs");
 
+/** The callable {@link debouncedDispatch} returns: invoking it schedules a
+ *  dispatch rather than performing one (except under `leading: true`, where the
+ *  call that opens a window dispatches immediately), and the extra members
+ *  drive whatever is currently scheduled. Only `flush` hands back the action's
+ *  promise — every other path drops it, so results and errors are observed
+ *  through the action's own notifications and callbacks. */
 export interface DebouncedDispatch<TArgs> {
   /** Replaces any pending dispatch's args. */
   (args: TArgs): void;
@@ -23,6 +29,19 @@ interface DebounceOptions {
   readonly leading?: boolean;
 }
 
+/** Wrap an action so a burst of calls collapses into one dispatch per `wait`
+ *  window — the search-as-you-type case.
+ *
+ *  Trailing edge by default: every call restarts the timer and the last args
+ *  win, so a caller typing faster than `wait` never dispatches at all until it
+ *  pauses. With `leading: true` the first call dispatches immediately and calls
+ *  inside the window are held for a single trailing fire as it closes. There is
+ *  deliberately no `maxWait`; a caller that needs a guaranteed fire calls
+ *  `flush()`.
+ *
+ *  `cancel()` discards scheduled args only. A dispatch already handed to the
+ *  action is past this wrapper's reach — abort it through the action or its
+ *  dispatch handle. */
 export function debouncedDispatch<TArgs, TResult>(
   action: Action<TArgs, TResult>,
   opts: DebounceOptions,
