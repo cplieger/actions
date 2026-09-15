@@ -1,6 +1,14 @@
 import { registerCleanup } from "./cleanup.js";
 import type { Action } from "./types.js";
 
+/** Options for {@link pollAction}. `interval` is the gap between one poll
+ *  settling and the next starting rather than a fixed cadence, so a slow action
+ *  cannot queue polls behind itself. `backoffOnError` stretches that gap by
+ *  `factor` per consecutive failure, capped at `max`; a failure means the
+ *  dispatch resolved `null`, which is the only failure signal a poller gets
+ *  because the action has already absorbed the error itself. `onSuccess` fires
+ *  only for a non-null result, and a throw from it is logged rather than
+ *  stopping the loop. */
 export interface PollOptions<TResult = unknown> {
   readonly interval: number;
   /** Default true: pause while document.hidden. */
@@ -11,6 +19,17 @@ export interface PollOptions<TResult = unknown> {
   readonly onSuccess?: (result: TResult) => void;
 }
 
+/** Start polling an action in the background and return its stop function.
+ *
+ *  Single-flight: a tick landing while a dispatch is still in flight is dropped
+ *  rather than queued, focus-triggered polls included. The first poll runs
+ *  immediately unless the document is already hidden, in which case it is
+ *  deferred until the document is shown. `stop()` is idempotent, detaches both
+ *  listeners, and also runs on page unload, so an unstopped poller does not
+ *  survive navigation.
+ *
+ *  The pause-when-hidden and refresh-on-focus behaviour needs a DOM; where
+ *  `document` or `window` is absent the loop degrades to a plain interval. */
 export function pollAction<TArgs, TResult>(
   action: Action<TArgs, TResult>,
   args: TArgs,

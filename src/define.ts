@@ -81,6 +81,30 @@ interface DedupeSlot {
 }
 const activeDedupes = new Map<string, DedupeSlot>();
 
+/**
+ * Register an action from its definition and return the handle callers
+ * dispatch. This is the framework's entry point; `apiAction` and
+ * `transportAction` synthesise a `run()` and delegate here.
+ *
+ * Call it once per action, normally at module scope: the returned
+ * {@link Action} is dispatched many times, and each dispatch carries its own
+ * instance id, cancellation token and registry entry. `def.name` must be
+ * unique — a duplicate is accepted with a one-time console warning, but the
+ * registry log and every name-keyed helper (`isPending`, `subscribeByName`,
+ * `bindLoadingState`) then answer for both definitions at once.
+ *
+ * Cancellation is cooperative and `def.run` is the half that has to cooperate:
+ * `timeout`, `handle.abort()` and `cancel()` abort the signal passed to it and
+ * nothing more, so a `run()` that ignores the signal runs to completion and
+ * only its result is discarded. `dispatch()` never rejects — it resolves
+ * `TResult | null`, where `null` covers failure and cancellation alike, so
+ * {@link DispatchHandle.outcome} is the only way to tell those two apart, or
+ * to tell either from a legitimate `null` result.
+ *
+ * The action is tracked for page-unload teardown from here, so its in-flight
+ * dispatches are cancelled on `beforeunload` without the caller wiring
+ * anything.
+ */
 export function defineAction<TArgs, TResult, TOp = unknown>(
   def: ActionDefinition<TArgs, TResult, TOp>,
 ): Action<TArgs, TResult> {

@@ -192,6 +192,15 @@ contracts beyond these seams.
 
 > `withTimeout(signal, ms)` and `API_TIMEOUT_MS` moved to [`@cplieger/fetch`](https://github.com/cplieger/fetch) (the layer that owns timeout composition); import them from there.
 
+`bindLoadingState` and `withAsyncFeedback` are browser-only: both read
+`document` unguarded, so calling them without a DOM throws. The rest of the
+surface is deliberately DOM-optional. `retry.ts`, `poll.ts` and `cleanup.ts`
+touch `window` or `document` only behind a `typeof window !== "undefined"` /
+`typeof document !== "undefined"` check, so outside a browser an action still
+defines, dispatches, retries and polls; what it drops is the wait-for-`online`
+retry pause, `pollAction`'s pause-when-hidden and refresh-on-focus, and the
+page-unload teardown. `src/poll-no-dom.node.test.ts` pins that path.
+
 ### Test utilities (`@cplieger/actions/testing`)
 
 The `./testing` subpath exports test-only helpers. Import only from test code:

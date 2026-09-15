@@ -1,6 +1,11 @@
 // Unlike pollAction, no pauseWhenHidden/refreshOnFocus: this is a bounded
 // flow the caller drives to completion, not a background refresh.
 
+/** Options for {@link pollUntil}. The loop waits before it polls, so
+ *  `intervalMs` delays the first `step` call as well as the later ones.
+ *  `maxAttempts` and `timeoutMs` are independent budgets, both checked after
+ *  that wait and before `step` runs, so either one expiring yields `timeout`
+ *  without a final poll. */
 export interface PollUntilOptions<T> {
   readonly intervalMs: number;
   /** Returns true on a result that ends the poll. */
@@ -18,6 +23,12 @@ export interface PollUntilOptions<T> {
   readonly signal?: AbortSignal;
 }
 
+/** Terminal result of {@link pollUntil}, which resolves in every case and never
+ *  rejects. `done` carries the first result `until` accepted; `timeout` means a
+ *  budget expired, drawing no distinction between the attempt and the time
+ *  budget; `aborted` means the signal fired, which wins over a transient
+ *  failure observed in the same iteration. A `step` that throws is transient,
+ *  never terminal, so no member here reports it. */
 export type PollUntilOutcome<T> =
   | { readonly status: "done"; readonly result: T }
   | { readonly status: "timeout" }
