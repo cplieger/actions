@@ -1,8 +1,6 @@
 # actions
 
-[![npm](https://img.shields.io/npm/v/@cplieger/actions)](https://www.npmjs.com/package/@cplieger/actions)
-[![JSR](https://jsr.io/badges/@cplieger/actions)](https://jsr.io/@cplieger/actions)
-[![Mutation (TS)](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/cplieger/actions/badges/mutation-ts.json)](https://github.com/cplieger/actions/issues?q=label%3Astryker-tracker)
+[![npm](https://img.shields.io/npm/v/@cplieger/actions)](https://www.npmjs.com/package/@cplieger/actions) [![JSR](https://jsr.io/badges/@cplieger/actions)](https://jsr.io/@cplieger/actions) [![Mutation (TS)](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/cplieger/actions/badges/mutation-ts.json)](https://github.com/cplieger/actions/issues?q=label%3Astryker-tracker)
 
 > Declarative UI-actions framework with lifecycle management, retry, debounce, and polling.
 
