@@ -5,7 +5,7 @@
 // never exposes a tombstoned (null) slot.
 import { describe, it, expect } from "vitest";
 import fc from "fast-check";
-import { record, pendingCount, isPending, recentLog, _resetForTest } from "./registry.js";
+import { record, pendingCount, isPending, getActionLog, _resetForTest } from "./registry.js";
 import type { ActionLifecycleStatus } from "./types.js";
 
 const STATUSES: readonly ActionLifecycleStatus[] = ["pending", "success", "error", "cancelled"];
@@ -65,7 +65,7 @@ describe("registry pending-accounting property", () => {
         // the complete id set — a cardinality oracle that fails on silently
         // dropped entries), each carrying its latest status, in first-record
         // order across the recomposed inflight + settled view.
-        const log = recentLog();
+        const log = getActionLog();
         expect(log).toHaveLength(lastStatus.size);
         const seen = new Set<string>();
         const firstRecordRank = new Map<string, number>();

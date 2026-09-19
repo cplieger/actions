@@ -9,7 +9,7 @@ vi.mock("./notifier.js", () => ({
 
 import { apiAction, configureApi, _resetApiConfigForTest } from "./api.js";
 import { _resetForTest as resetDefine } from "./define.js";
-import { _resetForTest as resetRegistry, recentLog } from "./registry.js";
+import { _resetForTest as resetRegistry, getActionLog } from "./registry.js";
 import { _resetForTest as resetCleanup } from "./cleanup.js";
 
 const mockFetch = vi.fn();
@@ -178,8 +178,8 @@ describe("configureApi — prepareHeaders", () => {
     });
     const result = await action.dispatch("x");
     expect(result).toBeNull();
-    expect(recentLog()[0]?.status).toBe("error");
-    expect(recentLog()[0]?.error?.message).toContain("token refresh failed");
+    expect(getActionLog()[0]?.status).toBe("error");
+    expect(getActionLog()[0]?.error?.message).toContain("token refresh failed");
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
@@ -196,7 +196,7 @@ describe("configureApi — prepareHeaders", () => {
     });
     const result = await action.dispatch("x");
     expect(result).toBeNull();
-    expect(recentLog()[0]?.status).toBe("error");
+    expect(getActionLog()[0]?.status).toBe("error");
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
@@ -211,7 +211,7 @@ describe("configureApi — prepareHeaders", () => {
     });
     const result = await action.dispatch(undefined);
     expect(result).toBeNull();
-    expect(recentLog()[0]?.status).toBe("error");
+    expect(getActionLog()[0]?.status).toBe("error");
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
@@ -258,7 +258,7 @@ describe("configureApi — prepareHeaders", () => {
     releasePrep();
     const result = await handle;
     expect(result).toBeNull();
-    expect(recentLog()[0]?.status).toBe("cancelled");
+    expect(getActionLog()[0]?.status).toBe("cancelled");
   });
 });
 
@@ -313,8 +313,8 @@ describe("configureApi — fetchFn", () => {
     });
     const result = await action.dispatch("x");
     expect(result).toBeNull();
-    expect(recentLog()[0]?.status).toBe("error");
-    expect(recentLog()[0]?.error?.code).toBe("network");
+    expect(getActionLog()[0]?.status).toBe("error");
+    expect(getActionLog()[0]?.error?.code).toBe("network");
   });
 
   it("surfaces an error when fetchFn resolves to null", async () => {
@@ -327,7 +327,7 @@ describe("configureApi — fetchFn", () => {
     });
     const result = await action.dispatch("x");
     expect(result).toBeNull();
-    expect(recentLog()[0]?.status).toBe("error");
+    expect(getActionLog()[0]?.status).toBe("error");
   });
 
   it("surfaces an error when fetchFn resolves to a non-object", async () => {
@@ -340,7 +340,7 @@ describe("configureApi — fetchFn", () => {
     });
     const result = await action.dispatch("x");
     expect(result).toBeNull();
-    expect(recentLog()[0]?.status).toBe("error");
+    expect(getActionLog()[0]?.status).toBe("error");
   });
 });
 

@@ -6,7 +6,7 @@ vi.mock("./notifier.js", () => ({
   _resetNotifierForTest: vi.fn(),
 }));
 import { defineAction, _resetForTest as resetDefine } from "./define.js";
-import { _resetForTest as resetRegistry, recentLog } from "./registry.js";
+import { _resetForTest as resetRegistry, getActionLog } from "./registry.js";
 import { _resetForTest as resetCleanup } from "./cleanup.js";
 import { configureTransport, transportAction, _resetTransportForTest } from "./transport.js";
 import { ActionError, retryNetwork } from "./error.js";
@@ -60,7 +60,7 @@ describe("runWithRetry: no retry on abort even for retry-class errors", () => {
     const result = await p;
     expect(result).toBeNull();
     expect(attempts).toBe(1);
-    expect(recentLog()[0]?.status).toBe("cancelled");
+    expect(getActionLog()[0]?.status).toBe("cancelled");
   });
 });
 

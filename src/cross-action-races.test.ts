@@ -6,7 +6,7 @@ vi.mock("./notifier.js", () => ({
   _resetNotifierForTest: vi.fn(),
 }));
 import { defineAction, _resetForTest as resetDefine, _internalsForTest } from "./define.js";
-import { _resetForTest as resetRegistry, recentLog } from "./registry.js";
+import { _resetForTest as resetRegistry, getActionLog } from "./registry.js";
 import { _resetForTest as resetCleanup } from "./cleanup.js";
 import { ActionError } from "./error.js";
 
@@ -309,7 +309,7 @@ describe("cancel during retry backoff with scope + dedupe + timeout", () => {
     action.cancel();
     const result = await handle;
     expect(result).toBeNull();
-    const entry = recentLog().find((e) => e.name === "test.cancel_backoff_combined");
+    const entry = getActionLog().find((e) => e.name === "test.cancel_backoff_combined");
     expect(entry?.status).toBe("cancelled");
     expect(_internalsForTest().activeDedupes).toBe(0);
   });

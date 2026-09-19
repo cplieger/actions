@@ -12,7 +12,7 @@ import { apiAction } from "./api.js";
 import type { ApiErrorInfo } from "./api.js";
 import { ActionError, hasErrorString } from "./error.js";
 import { notifyError, notifySuccess } from "./notifier.js";
-import { recentLog } from "./registry.js";
+import { getActionLog } from "./registry.js";
 
 const mockFetch = vi.fn();
 
@@ -50,7 +50,7 @@ describe("apiAction decode (2xx interpretation)", () => {
     });
     const result = await action.dispatch({ repo: "r" });
     expect(result).toBeNull();
-    const log = recentLog()[0];
+    const log = getActionLog()[0];
     expect(log?.status).toBe("error");
     expect(log?.error?.message).toBe("merge conflict");
     expect(log?.error?.code).toBe("git");
@@ -76,7 +76,7 @@ describe("apiAction decode (2xx interpretation)", () => {
     });
     const result = await action.dispatch();
     expect(result).toEqual({ output: "staged" });
-    expect(recentLog()[0]?.status).toBe("success");
+    expect(getActionLog()[0]?.status).toBe("success");
   });
 
   it("sees undefined for a 204 body and owns the interpretation", async () => {
@@ -113,7 +113,7 @@ describe("apiAction decodeError (non-2xx reinterpretation)", () => {
     });
     const result = await action.dispatch({ name: "x" });
     expect(result).toEqual(envelope);
-    expect(recentLog()[0]?.status).toBe("success");
+    expect(getActionLog()[0]?.status).toBe("success");
     expect(vi.mocked(notifyError)).not.toHaveBeenCalled();
   });
 
@@ -131,7 +131,7 @@ describe("apiAction decodeError (non-2xx reinterpretation)", () => {
           : undefined,
     });
     await action.dispatch();
-    const log = recentLog()[0];
+    const log = getActionLog()[0];
     expect(log?.status).toBe("error");
     expect(log?.error?.message).toBe("upstream offline");
     expect(log?.error?.code).toBe("upstream");
@@ -153,7 +153,7 @@ describe("apiAction decodeError (non-2xx reinterpretation)", () => {
       expect.objectContaining({ status: 404, message: "Not found", body: { error: "Not found" } }),
       { spec: expect.anything() },
     );
-    const log = recentLog()[0];
+    const log = getActionLog()[0];
     expect(log?.error?.status).toBe(404);
     expect(log?.error?.message).toBe("Not found");
   });
@@ -169,7 +169,7 @@ describe("apiAction decodeError (non-2xx reinterpretation)", () => {
     });
     await action.dispatch();
     expect(decodeError).not.toHaveBeenCalled();
-    expect(recentLog()[0]?.error?.code).toBe("network");
+    expect(getActionLog()[0]?.error?.code).toBe("network");
   });
 
   it("never runs on cancellation", async () => {
@@ -185,7 +185,7 @@ describe("apiAction decodeError (non-2xx reinterpretation)", () => {
     h.abort();
     await h;
     expect(decodeError).not.toHaveBeenCalled();
-    expect(recentLog()[0]?.status).toBe("cancelled");
+    expect(getActionLog()[0]?.status).toBe("cancelled");
   });
 });
 
@@ -255,7 +255,7 @@ describe("apiAction decodeError — normalizing a plain error object", () => {
       }),
     });
     await action.dispatch();
-    const err = recentLog()[0]?.error;
+    const err = getActionLog()[0]?.error;
     expect(err?.message).toBe("upstream offline");
     expect(err?.status).toBe(503);
     expect(err?.code).toBe("upstream");

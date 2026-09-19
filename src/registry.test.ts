@@ -3,7 +3,6 @@ import {
   record,
   subscribe,
   subscribeByName,
-  recentLog,
   getActionLog,
   pendingCount,
   isPending,
@@ -32,9 +31,9 @@ describe("bounded eviction", () => {
     for (let i = 0; i < 200; i++) {
       record(makeInstance({ id: `a-${i}`, status: "success" }));
     }
-    expect(recentLog()).toHaveLength(200);
+    expect(getActionLog()).toHaveLength(200);
     record(makeInstance({ id: "overflow", status: "success" }));
-    expect(recentLog()).toHaveLength(200);
+    expect(getActionLog()).toHaveLength(200);
   });
 
   it("preserves pending entries during soft eviction", () => {
@@ -42,7 +41,7 @@ describe("bounded eviction", () => {
       record(makeInstance({ id: `p-${i}`, status: "pending" }));
     }
     record(makeInstance({ id: "extra", status: "pending" }));
-    expect(recentLog()).toHaveLength(201);
+    expect(getActionLog()).toHaveLength(201);
     expect(pendingCount()).toBe(201);
   });
 
@@ -54,7 +53,7 @@ describe("bounded eviction", () => {
     expect(pendingCount()).toBe(1000);
     record(makeInstance({ id: "hard-overflow", status: "pending" }));
     expect(pendingCount()).toBe(1000);
-    expect(recentLog()).toHaveLength(1000);
+    expect(getActionLog()).toHaveLength(1000);
     consoleSpy.mockRestore();
   });
 
@@ -65,7 +64,7 @@ describe("bounded eviction", () => {
     for (let i = 0; i < 260; i++) {
       record(makeInstance({ id: `d-${i}`, status: "success" }));
     }
-    const log = recentLog();
+    const log = getActionLog();
     expect(log.length).toBeLessThanOrEqual(200);
     for (const entry of log) {
       expect(entry).not.toBeNull();
@@ -130,12 +129,12 @@ describe("listener iteration", () => {
   });
 });
 
-describe("recentLog", () => {
+describe("getActionLog", () => {
   it("never returns null entries", () => {
     for (let i = 0; i < 250; i++) {
       record(makeInstance({ id: `r-${i}`, status: "success" }));
     }
-    const log = recentLog();
+    const log = getActionLog();
     for (const entry of log) {
       expect(entry).not.toBeNull();
       expect(entry).not.toBeUndefined();
@@ -146,7 +145,7 @@ describe("recentLog", () => {
     record(makeInstance({ id: "first", status: "success" }));
     record(makeInstance({ id: "second", status: "success" }));
     record(makeInstance({ id: "third", status: "success" }));
-    const log = recentLog();
+    const log = getActionLog();
     expect(log.map((e) => e.id)).toEqual(["first", "second", "third"]);
   });
 });
@@ -172,7 +171,7 @@ describe("_resetForTest", () => {
     expect(listener).toHaveBeenCalledTimes(1);
     _resetForTest();
     listener.mockClear();
-    expect(recentLog()).toHaveLength(0);
+    expect(getActionLog()).toHaveLength(0);
     expect(pendingCount()).toBe(0);
     expect(pendingCount(["test.action"])).toBe(0);
     record(makeInstance({ id: "post", status: "pending" }));
@@ -269,7 +268,7 @@ describe("pendingByName index", () => {
     expect(isPending("bulk.op")).toBe(true);
     record(makeInstance({ id: "hc-overflow", name: "bulk.op", status: "pending" }));
     expect(pendingCount()).toBe(1000);
-    const pending = recentLog().filter((i) => i.status === "pending" && i.name === "bulk.op");
+    const pending = getActionLog().filter((i) => i.status === "pending" && i.name === "bulk.op");
     expect(pending.find((e) => e.id === "hc-0")).toBeUndefined();
     consoleSpy.mockRestore();
   });
@@ -290,7 +289,7 @@ describe("split-shape transition table", () => {
     for (let i = 0; i < 250; i++) {
       record(makeInstance({ id: `t-${String(i)}`, status: "success" }));
     }
-    const log = recentLog();
+    const log = getActionLog();
     expect(log).toHaveLength(200);
     expect(log[0]?.id).toBe("t-50");
     expect(log[199]?.id).toBe("t-249");
@@ -302,15 +301,15 @@ describe("split-shape transition table", () => {
       record(makeInstance({ id: `churn-${String(i)}`, status: "success" }));
     }
     expect(isPending("slow.op")).toBe(true);
-    const stillThere = recentLog().find((e) => e.id === "long");
+    const stillThere = getActionLog().find((e) => e.id === "long");
     expect(stillThere?.status).toBe("pending");
     // First-record order: the oldest entry in the view is the pending one.
-    expect(recentLog()[0]?.id).toBe("long");
+    expect(getActionLog()[0]?.id).toBe("long");
 
     record(makeInstance({ id: "long", name: "slow.op", status: "success" }));
     expect(isPending("slow.op")).toBe(false);
     expect(pendingCount()).toBe(0);
-    const settledNow = recentLog().find((e) => e.id === "long");
+    const settledNow = getActionLog().find((e) => e.id === "long");
     expect(settledNow?.status).toBe("success");
   });
 
@@ -318,7 +317,7 @@ describe("split-shape transition table", () => {
     record(makeInstance({ id: "rr", name: "x.y", status: "pending" }));
     record(makeInstance({ id: "rr", name: "x.y", status: "pending", attempts: 2 }));
     expect(pendingCount()).toBe(1);
-    const entries = recentLog().filter((e) => e.id === "rr");
+    const entries = getActionLog().filter((e) => e.id === "rr");
     expect(entries).toHaveLength(1);
     expect(entries[0]?.attempts).toBe(2);
   });
@@ -326,7 +325,7 @@ describe("split-shape transition table", () => {
   it("double-terminal record keeps one latest-per-id entry", () => {
     record(makeInstance({ id: "dt", status: "error" }));
     record(makeInstance({ id: "dt", status: "cancelled" }));
-    const entries = recentLog().filter((e) => e.id === "dt");
+    const entries = getActionLog().filter((e) => e.id === "dt");
     expect(entries).toHaveLength(1);
     expect(entries[0]?.status).toBe("cancelled");
     expect(pendingCount()).toBe(0);
@@ -334,7 +333,7 @@ describe("split-shape transition table", () => {
 
   it("terminal-only record (no prior pending) lands in the log", () => {
     record(makeInstance({ id: "term-only", status: "cancelled" }));
-    expect(recentLog().find((e) => e.id === "term-only")?.status).toBe("cancelled");
+    expect(getActionLog().find((e) => e.id === "term-only")?.status).toBe("cancelled");
     expect(pendingCount()).toBe(0);
   });
 
@@ -346,7 +345,7 @@ describe("split-shape transition table", () => {
     record(makeInstance({ id: "revive", name: "z.op", status: "pending" }));
     expect(isPending("z.op")).toBe(true);
     expect(pendingCount()).toBe(1);
-    const entries = recentLog().filter((e) => e.id === "revive");
+    const entries = getActionLog().filter((e) => e.id === "revive");
     expect(entries).toHaveLength(1);
     expect(entries[0]?.status).toBe("pending");
   });
@@ -357,7 +356,7 @@ describe("split-shape transition table", () => {
     record(makeInstance({ id: "o-3", name: "c", status: "pending" }));
     // o-1 settles AFTER o-3 was first recorded; its view position must not move.
     record(makeInstance({ id: "o-1", name: "a", status: "success" }));
-    expect(recentLog().map((e) => e.id)).toEqual(["o-1", "o-2", "o-3"]);
+    expect(getActionLog().map((e) => e.id)).toEqual(["o-1", "o-2", "o-3"]);
   });
 });
 
@@ -370,7 +369,7 @@ describe("transition atomicity under synchronous observers", () => {
       // Track the name's pending signal; on each flush snapshot the entry's
       // visibility in the recomposed log.
       isPending("atom.op");
-      observed.push(recentLog().find((e) => e.id === "atomic-1")?.status);
+      observed.push(getActionLog().find((e) => e.id === "atomic-1")?.status);
     });
     record(makeInstance({ id: "atomic-1", name: "atom.op", status: "success" }));
     stop();
@@ -384,7 +383,7 @@ describe("transition atomicity under synchronous observers", () => {
     let reentered = false;
     const stop = effect(() => {
       const pending = isPending("reent.op");
-      if (!pending && !reentered && recentLog().some((e) => e.id === "reent-1")) {
+      if (!pending && !reentered && getActionLog().some((e) => e.id === "reent-1")) {
         reentered = true;
         // Fires synchronously inside the settlement flush: the entry must
         // already be in `settled`, so this re-record takes the revive cell.
@@ -394,7 +393,7 @@ describe("transition atomicity under synchronous observers", () => {
     record(makeInstance({ id: "reent-1", name: "reent.op", status: "success" }));
     stop();
     expect(reentered).toBe(true);
-    const entries = recentLog().filter((e) => e.id === "reent-1");
+    const entries = getActionLog().filter((e) => e.id === "reent-1");
     expect(entries).toHaveLength(1);
     expect(entries[0]?.status).toBe("pending");
     expect(pendingCount(["reent.op"])).toBe(1);
@@ -410,7 +409,7 @@ describe("transition atomicity under synchronous observers", () => {
       seen.push({
         status: inst.status,
         pending: pendingCount(["fan.op"]),
-        inLog: recentLog().some((e) => e.id === "fan-1" && e.status === inst.status),
+        inLog: getActionLog().some((e) => e.id === "fan-1" && e.status === inst.status),
       });
     });
     record(makeInstance({ id: "fan-1", name: "fan.op", status: "pending" }));
@@ -434,7 +433,7 @@ describe("in-flight leak watchdog", () => {
     expect(consoleSpy.mock.calls[0]?.[0]).toContain("leak-0");
     expect(pendingCount()).toBe(1000);
     expect(isPending("leaky.op")).toBe(true);
-    expect(recentLog().find((e) => e.id === "leak-0")).toBeUndefined();
+    expect(getActionLog().find((e) => e.id === "leak-0")).toBeUndefined();
     consoleSpy.mockRestore();
   });
 
@@ -466,8 +465,8 @@ describe("in-flight leak watchdog", () => {
     expect(consoleSpy.mock.calls[0]?.[0]).toContain("cap-0");
     expect(pendingCount()).toBe(1000);
     expect(isPending("old.op")).toBe(true);
-    expect(recentLog().find((e) => e.id === "revived")?.status).toBe("pending");
-    expect(recentLog().find((e) => e.id === "cap-0")).toBeUndefined();
+    expect(getActionLog().find((e) => e.id === "revived")?.status).toBe("pending");
+    expect(getActionLog().find((e) => e.id === "cap-0")).toBeUndefined();
     // Cross-name signal correction: bulk.op lost exactly one.
     expect(pendingCount(["bulk.op"])).toBe(999);
     consoleSpy.mockRestore();

@@ -9,7 +9,7 @@ vi.mock("./notifier.js", () => ({
 
 import { apiAction } from "./api.js";
 import { IDEMPOTENCY_HEADER, _resetForTest as resetDefine } from "./define.js";
-import { _resetForTest as resetRegistry, recentLog } from "./registry.js";
+import { _resetForTest as resetRegistry, getActionLog } from "./registry.js";
 import { _resetForTest as resetCleanup } from "./cleanup.js";
 
 const mockFetch = vi.fn();
@@ -78,7 +78,7 @@ describe("apiAction — response edge cases", () => {
     });
     const result = await action.dispatch(undefined);
     expect(result).toBeUndefined();
-    expect(recentLog()[0]?.status).toBe("success");
+    expect(getActionLog()[0]?.status).toBe("success");
   });
 
   it("throws ActionError on non-JSON response body", async () => {
@@ -95,8 +95,8 @@ describe("apiAction — response edge cases", () => {
     });
     const result = await action.dispatch(undefined);
     expect(result).toBeNull();
-    expect(recentLog()[0]?.status).toBe("error");
-    expect(recentLog()[0]?.error?.message).toContain("response not JSON");
+    expect(getActionLog()[0]?.status).toBe("error");
+    expect(getActionLog()[0]?.error?.message).toContain("response not JSON");
   });
 
   it("falls back to HTTP status string when error body is not JSON", async () => {
@@ -108,8 +108,8 @@ describe("apiAction — response edge cases", () => {
     });
     const result = await action.dispatch(undefined);
     expect(result).toBeNull();
-    expect(recentLog()[0]?.error?.message).toBe("HTTP 502");
-    expect(recentLog()[0]?.error?.status).toBe(502);
+    expect(getActionLog()[0]?.error?.message).toBe("HTTP 502");
+    expect(getActionLog()[0]?.error?.status).toBe(502);
   });
 
   it("GET request does not send Content-Type or body", async () => {
@@ -137,7 +137,7 @@ describe("apiAction — error code propagation", () => {
       error: false,
     });
     await action.dispatch(undefined);
-    const entry = recentLog()[0]!;
+    const entry = getActionLog()[0]!;
     expect(entry.status).toBe("error");
     expect(entry.error?.message).toBe("rate limited");
     expect(entry.error?.status).toBe(429);
@@ -154,7 +154,7 @@ describe("apiAction — error code propagation", () => {
       error: false,
     });
     await action.dispatch(undefined);
-    const entry = recentLog()[0]!;
+    const entry = getActionLog()[0]!;
     expect(entry.error?.message).toBe("not found");
     expect(entry.error?.code).toBeUndefined();
   });

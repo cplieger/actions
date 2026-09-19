@@ -6,7 +6,7 @@ vi.mock("./notifier.js", () => ({
   _resetNotifierForTest: vi.fn(),
 }));
 import { defineAction, _resetForTest as resetDefine, _internalsForTest } from "./define.js";
-import { _resetForTest as resetRegistry, pendingCount, recentLog } from "./registry.js";
+import { _resetForTest as resetRegistry, pendingCount, getActionLog } from "./registry.js";
 import { _resetForTest as resetCleanup } from "./cleanup.js";
 
 beforeEach(() => {
@@ -110,7 +110,7 @@ describe("memory leak stress — registry log eviction", () => {
     for (let i = 0; i < 1000; i++) {
       await action.dispatch({ i });
     }
-    const log = recentLog();
+    const log = getActionLog();
     expect(log.length).toBeLessThanOrEqual(200);
     expect(log.every((e) => e.status !== "pending")).toBe(true);
   });

@@ -7,7 +7,7 @@ vi.mock("./notifier.js", () => ({
   _resetNotifierForTest: vi.fn(),
 }));
 import { apiAction } from "./api.js";
-import { recentLog } from "./registry.js";
+import { getActionLog } from "./registry.js";
 
 const mockFetch = vi.fn();
 
@@ -33,7 +33,7 @@ describe("apiAction", () => {
     const action = testAction();
     const result = await action.dispatch({ id: "1" });
     expect(result).toEqual({ name: "foo" });
-    expect(recentLog()[0]?.status).toBe("success");
+    expect(getActionLog()[0]?.status).toBe("success");
   });
 
   it("returns undefined on 204 (no JSON parse)", async () => {
@@ -48,7 +48,7 @@ describe("apiAction", () => {
     const action = testAction();
     const result = await action.dispatch({ id: "1" });
     expect(result).toBeNull();
-    expect(recentLog()[0]?.error?.code).toBe("timeout");
+    expect(getActionLog()[0]?.error?.code).toBe("timeout");
   });
 
   it("throws ActionError with code 'cancelled' on AbortError when signal.aborted", async () => {
@@ -57,14 +57,14 @@ describe("apiAction", () => {
     const promise = action.dispatch({ id: "1" });
     action.cancel();
     await promise;
-    expect(recentLog()[0]?.status).toBe("cancelled");
+    expect(getActionLog()[0]?.status).toBe("cancelled");
   });
 
   it("throws ActionError with code 'network' on TypeError (Failed to fetch)", async () => {
     mockFetch.mockRejectedValue(new TypeError("Failed to fetch"));
     const action = testAction();
     await action.dispatch({ id: "1" });
-    expect(recentLog()[0]?.error?.code).toBe("network");
+    expect(getActionLog()[0]?.error?.code).toBe("network");
   });
 
   it("throws ActionError with status + body.error message on non-OK response", async () => {
@@ -73,7 +73,7 @@ describe("apiAction", () => {
     );
     const action = testAction();
     await action.dispatch({ id: "1" });
-    const log = recentLog()[0];
+    const log = getActionLog()[0];
     expect(log?.error?.status).toBe(404);
     expect(log?.error?.message).toBe("Not found");
   });
@@ -201,7 +201,7 @@ describe("apiAction — a def timeout aborts the run signal but not the dispatch
       { message: "Request cancelled", code: "cancelled" },
       { id: "1" },
     );
-    const log = recentLog()[0];
+    const log = getActionLog()[0];
     expect(log?.status).toBe("error");
     expect(log?.error?.code).toBe("cancelled");
     expect(log?.error?.status).toBeUndefined();
@@ -219,7 +219,7 @@ describe("apiAction — a request that never reached the network", () => {
     const result = await action.dispatch(undefined);
     expect(result).toBeNull();
     expect(mockFetch).not.toHaveBeenCalled();
-    const err = recentLog()[0]?.error;
+    const err = getActionLog()[0]?.error;
     expect(err?.code).toBe("invalid");
     expect(err?.status).toBeUndefined();
   });

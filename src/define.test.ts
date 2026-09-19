@@ -10,7 +10,7 @@ vi.mock("./notifier.js", () => ({
 
 import { defineAction } from "./define.js";
 import { ActionError, retryNetwork } from "./error.js";
-import { recentLog, subscribe, pendingCount } from "./registry.js";
+import { getActionLog, subscribe, pendingCount } from "./registry.js";
 import * as notifier from "./notifier.js";
 
 beforeEach(() => {
@@ -39,7 +39,7 @@ describe("defineAction — happy path", () => {
     await action.dispatch({});
     unsub();
     expect(events).toEqual(["pending", "success"]);
-    const log = recentLog();
+    const log = getActionLog();
     expect(log[0]?.status).toBe("success");
     expect(log[0]?.result).toBe("done");
   });
@@ -96,7 +96,7 @@ describe("defineAction — error path", () => {
       },
     });
     await action.dispatch({});
-    const log = recentLog();
+    const log = getActionLog();
     expect(log[0]?.status).toBe("error");
     expect(log[0]?.error?.message).toBe("bad");
     expect(log[0]?.error?.status).toBe(500);
@@ -145,7 +145,7 @@ describe("defineAction — error path", () => {
       },
     });
     await action.dispatch({});
-    expect(recentLog()[0]?.error?.message).toBe("string");
+    expect(getActionLog()[0]?.error?.message).toBe("string");
   });
 });
 
@@ -265,7 +265,7 @@ describe("defineAction — cancellation", () => {
     const p = action.dispatch({});
     action.cancel();
     await p;
-    const log = recentLog();
+    const log = getActionLog();
     expect(log[log.length - 1]?.status).toBe("cancelled");
   });
 
@@ -310,7 +310,7 @@ describe("defineAction — concurrent instances", () => {
   it("each dispatch gets a unique id", async () => {
     const action = defineAction({ name: "test.multi", run: async () => "x" });
     await Promise.all([action.dispatch({}), action.dispatch({}), action.dispatch({})]);
-    const ids = recentLog().map((i) => i.id);
+    const ids = getActionLog().map((i) => i.id);
     expect(new Set(ids).size).toBe(ids.length);
   });
 
@@ -337,12 +337,12 @@ describe("defineAction — concurrent instances", () => {
 });
 
 describe("registry", () => {
-  it("recentLog is bounded", async () => {
+  it("getActionLog is bounded", async () => {
     const action = defineAction({ name: "test.bounded", run: async () => "x" });
     for (let i = 0; i < 250; i++) {
       await action.dispatch({});
     }
-    expect(recentLog().length).toBe(200);
+    expect(getActionLog().length).toBe(200);
   });
 
   it("subscriber unsubscribes cleanly", async () => {
