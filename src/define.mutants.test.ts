@@ -11,7 +11,7 @@ vi.mock("./notifier.js", () => ({
 }));
 import { defineAction, _resetForTest as resetDefine } from "./define.js";
 import { symbolId } from "./define-helpers.js";
-import { recentLog, _resetForTest as resetRegistry } from "./registry.js";
+import { getActionLog, _resetForTest as resetRegistry } from "./registry.js";
 import { _resetForTest as resetCleanup } from "./cleanup.js";
 import { ActionError, retryNetwork } from "./error.js";
 import * as notifier from "./notifier.js";
@@ -319,7 +319,9 @@ describe("a dispatch that fails in optimistic() before its dedupe slot is publis
     // so there was no in-flight dispatch to join.
     await expect(duplicate.outcome).resolves.toEqual(failure);
     expect(snapshots).toBe(2);
-    expect(recentLog().filter((e) => e.name === "optimistic.same_tick_duplicate")).toHaveLength(2);
+    expect(getActionLog().filter((e) => e.name === "optimistic.same_tick_duplicate")).toHaveLength(
+      2,
+    );
   });
 
   it("does not hand its failure to a duplicate that would have succeeded", async () => {
@@ -436,7 +438,7 @@ describe("cancel() and the scope lane", () => {
 
     await expect(queued).resolves.toBeNull();
     await blocker;
-    const entry = recentLog().find((e) => (e.args as { k: number }).k === 1);
+    const entry = getActionLog().find((e) => (e.args as { k: number }).k === 1);
     expect(entry?.status).toBe("cancelled");
   });
 
@@ -465,7 +467,7 @@ describe("cancel() and the scope lane", () => {
     await settleTurn();
 
     expect(settledCalls).toHaveLength(1);
-    const entries = recentLog().filter((e) => e.name === "queued.settled_cancel");
+    const entries = getActionLog().filter((e) => e.name === "queued.settled_cancel");
     expect(entries).toHaveLength(1);
     expect(entries[0]?.status).toBe("success");
   });
@@ -545,7 +547,7 @@ describe("a faulty user callback is reported, never swallowed silently", () => {
       "[actions] emitSuccessToast for toast.success_throws threw",
       expect.any(Error),
     );
-    expect(recentLog()[0]?.status).toBe("success");
+    expect(getActionLog()[0]?.status).toBe("success");
     logged.mockRestore();
   });
 
@@ -594,7 +596,7 @@ describe("a faulty user callback is reported, never swallowed silently", () => {
       "[actions] rollback (cancellation) for cancel.rollback_throws threw",
       expect.any(Error),
     );
-    expect(recentLog()[0]?.status).toBe("cancelled");
+    expect(getActionLog()[0]?.status).toBe("cancelled");
     logged.mockRestore();
   });
 });

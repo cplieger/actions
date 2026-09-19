@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { resetActionFramework } from "./test-helpers/action-test-setup.js";
 import { configureTransport, transportAction, _resetTransportForTest } from "./transport.js";
-import { recentLog } from "./registry.js";
+import { getActionLog } from "./registry.js";
 
 vi.mock("./notifier.js", () => ({
   configure: vi.fn(),
@@ -36,7 +36,7 @@ describe("transportAction error classification", () => {
     });
     const action = testAction();
     await action.dispatch({ chatID: "c1" });
-    const log = recentLog();
+    const log = getActionLog();
     expect(log[0]?.status).toBe("error");
     expect(log[0]?.error?.code).toBe("timeout");
   });
@@ -50,7 +50,7 @@ describe("transportAction error classification", () => {
     });
     const action = testAction();
     await action.dispatch({ chatID: "c1" });
-    const log = recentLog();
+    const log = getActionLog();
     expect(log[0]?.status).toBe("error");
     expect(log[0]?.error?.code).toBe("cancelled");
   });
@@ -59,7 +59,7 @@ describe("transportAction error classification", () => {
     mockSend.mockResolvedValue({ ok: false, status: 0, error: "Failed to fetch", code: "network" });
     const action = testAction();
     await action.dispatch({ chatID: "c1" });
-    const log = recentLog();
+    const log = getActionLog();
     expect(log[0]?.status).toBe("error");
     expect(log[0]?.error?.code).toBe("network");
   });
@@ -68,7 +68,7 @@ describe("transportAction error classification", () => {
     mockSend.mockResolvedValue({ ok: false, status: 500, error: "Internal Server Error" });
     const action = testAction();
     await action.dispatch({ chatID: "c1" });
-    const log = recentLog();
+    const log = getActionLog();
     expect(log[0]?.status).toBe("error");
     expect(log[0]?.error?.status).toBe(500);
     expect(log[0]?.error?.code).toBeUndefined();
@@ -84,7 +84,7 @@ describe("transportAction error classification", () => {
     const promise = action.dispatch({ chatID: "c1" });
     action.cancel();
     await promise;
-    const log = recentLog();
+    const log = getActionLog();
     expect(log[0]?.status).toBe("cancelled");
   });
 });
@@ -99,7 +99,7 @@ describe("transportAction — unconfigured transport", () => {
     });
     const result = await action.dispatch({ id: "x" });
     expect(result).toBeNull();
-    const log = recentLog();
+    const log = getActionLog();
     expect(log[0]?.error?.code).toBe("transport_not_configured");
   });
 });
@@ -110,8 +110,8 @@ describe("transportAction — a successful send", () => {
     const action = testAction();
     const result = await action.dispatch({ chatID: "c1" });
     expect(result).toBeUndefined();
-    expect(recentLog()[0]?.status).toBe("success");
-    expect(recentLog()[0]?.error).toBeUndefined();
+    expect(getActionLog()[0]?.status).toBe("success");
+    expect(getActionLog()[0]?.error).toBeUndefined();
   });
 });
 
@@ -120,7 +120,7 @@ describe("transportAction — error classification defaults", () => {
     mockSend.mockResolvedValue({ ok: false, status: 0, code: "cancelled" });
     const action = testAction();
     await action.dispatch({ chatID: "c1" });
-    const err = recentLog()[0]?.error;
+    const err = getActionLog()[0]?.error;
     expect(err?.code).toBe("cancelled");
     expect(err?.message).toBe("cancelled");
     expect(err?.status).toBeUndefined();
@@ -130,7 +130,7 @@ describe("transportAction — error classification defaults", () => {
     mockSend.mockResolvedValue({ ok: false, status: 504, code: "timeout" });
     const action = testAction();
     await action.dispatch({ chatID: "c1" });
-    const err = recentLog()[0]?.error;
+    const err = getActionLog()[0]?.error;
     expect(err?.code).toBe("timeout");
     expect(err?.message).toBe("Request timed out");
     expect(err?.status).toBe(504);
@@ -140,7 +140,7 @@ describe("transportAction — error classification defaults", () => {
     mockSend.mockResolvedValue({ ok: false, status: 0, code: "network" });
     const action = testAction();
     await action.dispatch({ chatID: "c1" });
-    const err = recentLog()[0]?.error;
+    const err = getActionLog()[0]?.error;
     expect(err?.code).toBe("network");
     expect(err?.message).toBe("network error");
     expect(err?.status).toBe(0);
@@ -155,7 +155,7 @@ describe("transportAction — error classification defaults", () => {
     });
     const action = testAction();
     await action.dispatch({ chatID: "c1" });
-    const err = recentLog()[0]?.error;
+    const err = getActionLog()[0]?.error;
     expect(err?.code).toBe("validation_failed");
     expect(err?.message).toBe("name already taken");
     expect(err?.status).toBe(422);

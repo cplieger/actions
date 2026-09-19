@@ -7,7 +7,7 @@
     "./testing": "./src/testing.ts"
   },
   "publish": {
-    "include": ["LICENSE", "README.md", "src/**/*.ts"],
+    "include": ["LICENSE", "NOTICE", "README.md", "src/**/*.ts"],
     "exclude": ["src/**/*.test.ts", "src/**/*-setup.ts", "src/**/test-helpers/**"]
   }
 }

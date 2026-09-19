@@ -228,13 +228,6 @@ export function subscribeByName(name: string, fn: RegistryListener): () => void 
   };
 }
 
-/** @internal Test-only public surface. */
-export function recentLog(): readonly ActionInstance[] {
-  const entries = [...inflight.values(), ...settled.values()];
-  entries.sort((a, b) => a.seq - b.seq);
-  return entries.map((e) => e.instance);
-}
-
 /** Read the recent action log. Useful for devtools integration and
  *  debugging panels. Returns a snapshot of all live entries.
  *
@@ -244,7 +237,11 @@ export function recentLog(): readonly ActionInstance[] {
  *  listener, and buildRetryButton retains a structuredClone of `args` in the
  *  error-notification retry closure. Do NOT put secrets, tokens, or PII in
  *  action args. */
-export const getActionLog = recentLog;
+export function getActionLog(): readonly ActionInstance[] {
+  const entries = [...inflight.values(), ...settled.values()];
+  entries.sort((a, b) => a.seq - b.seq);
+  return entries.map((e) => e.instance);
+}
 
 /** O(1) check: true if at least one instance of the named action is pending.
  *  Reactive — reading inside an effect tracks the name's pending signal. */
