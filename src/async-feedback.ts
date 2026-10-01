@@ -55,7 +55,7 @@ function announce(message: string): void {
 }
 
 /** Options for {@link withAsyncFeedback}. All fields are optional; the glyph
- *  renderers default to vibekit's inline SVGs. */
+ *  renderers default to marotte's inline SVGs. */
 export interface AsyncFeedbackOptions {
   /** Post-completion glyph hold in ms before content reverts. Default 1200;
    *  `<= 0` persists the glyph indefinitely (button still re-enables, but
