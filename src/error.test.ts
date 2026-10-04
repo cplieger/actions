@@ -122,7 +122,7 @@ describe("toActionError", () => {
 
   it("handles empty string thrown", () => {
     const result = toActionError("");
-    expect(result.message).toBe("Unknown error (empty value thrown)");
+    expect(result.message).toBe("Unknown error. The thrown value was empty.");
     expect(result.code).toBe("unknown");
     expect(result.cause).toBe("");
   });
@@ -135,14 +135,14 @@ describe("toActionError", () => {
 
   it("handles null thrown", () => {
     const result = toActionError(null);
-    expect(result.message).toBe("Unknown error (null thrown)");
+    expect(result.message).toBe("Unknown error. The thrown value was null.");
     expect(result.code).toBe("unknown");
     expect(result.cause).toBeUndefined();
   });
 
   it("handles undefined thrown", () => {
     const result = toActionError(undefined);
-    expect(result.message).toBe("Unknown error (undefined thrown)");
+    expect(result.message).toBe("Unknown error. The thrown value was undefined.");
     expect(result.code).toBe("unknown");
     expect(result.cause).toBeUndefined();
   });

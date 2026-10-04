@@ -67,7 +67,7 @@ export function transportAction<TArgs, TOp = unknown>(
     ...(rest as Omit<ActionDefinition<TArgs, void, TOp>, "run">),
     run: async (args: TArgs, signal: AbortSignal, ctx?: ActionContext) => {
       if (_send === undefined) {
-        throw new ActionError("Transport not configured — call configureTransport() at boot", {
+        throw new ActionError("Transport not configured. Call configureTransport() at boot.", {
           code: "transport_not_configured",
         });
       }
@@ -96,7 +96,7 @@ export function transportAction<TArgs, TOp = unknown>(
         if (r.code !== undefined) {
           errOpts.code = r.code;
         }
-        throw new ActionError(r.error ?? `send failed (${String(r.status)})`, errOpts);
+        throw new ActionError(r.error ?? `send failed with status ${String(r.status)}`, errOpts);
       }
       return undefined;
     },

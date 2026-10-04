@@ -105,15 +105,15 @@ export function toActionError(e: unknown): ActionErrorLike {
     return r;
   }
   if (e === null) {
-    return { message: "Unknown error (null thrown)", code: "unknown" };
+    return { message: "Unknown error. The thrown value was null.", code: "unknown" };
   }
   if (e === undefined) {
-    return { message: "Unknown error (undefined thrown)", code: "unknown" };
+    return { message: "Unknown error. The thrown value was undefined.", code: "unknown" };
   }
   // eslint-disable-next-line @typescript-eslint/no-base-to-string -- intentional coercion of unknown thrown value
   const msg = String(e);
   return {
-    message: msg !== "" ? msg : "Unknown error (empty value thrown)",
+    message: msg !== "" ? msg : "Unknown error. The thrown value was empty.",
     code: "unknown",
     cause: e,
   };
