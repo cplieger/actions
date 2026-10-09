@@ -1,6 +1,3 @@
-// cleanup.test.ts drives the sweep through the _cancelAllForTest() back door,
-// which never proves the listener is installed on window. These tests
-// dispatch a real beforeunload event instead.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { resetActionFramework } from "./test-helpers/action-test-setup.js";
 vi.mock("./notifier.js", () => ({
@@ -10,11 +7,7 @@ vi.mock("./notifier.js", () => ({
   _resetNotifierForTest: vi.fn(),
 }));
 import { defineAction } from "./define.js";
-import {
-  registerCleanup,
-  _cancelAllForTest as cancelAllPending,
-  _resetForTest as resetCleanup,
-} from "./cleanup.js";
+import { registerCleanup, _resetForTest as resetCleanup } from "./cleanup.js";
 
 beforeEach(() => {
   resetActionFramework();
@@ -80,7 +73,10 @@ describe("cleanup — reset clears the tracked actions", () => {
     const p = tracked.action.dispatch({});
 
     resetCleanup();
-    cancelAllPending();
+    const afterReset = vi.fn();
+    registerCleanup(afterReset);
+    window.dispatchEvent(new Event("beforeunload"));
+    expect(afterReset).toHaveBeenCalledOnce();
     expect(tracked.state.aborted).toBe(false);
 
     tracked.release();
