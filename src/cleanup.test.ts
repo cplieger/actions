@@ -7,7 +7,11 @@ vi.mock("./notifier.js", () => ({
   _resetNotifierForTest: vi.fn(),
 }));
 import { defineAction } from "./define.js";
-import { registerCleanup, _cancelAllForTest as cancelAllPending } from "./cleanup.js";
+import { registerCleanup } from "./cleanup.js";
+
+function unload(): void {
+  window.dispatchEvent(new Event("beforeunload"));
+}
 
 beforeEach(() => {
   resetActionFramework();
@@ -28,7 +32,7 @@ describe("cancelAllPending + registered cleanup", () => {
         }),
     });
     const p = action.dispatch({});
-    cancelAllPending();
+    unload();
     await p;
     expect(aborted).toBe(true);
   });
@@ -38,7 +42,7 @@ describe("cancelAllPending + registered cleanup", () => {
     const fn2 = vi.fn();
     registerCleanup(fn1);
     registerCleanup(fn2);
-    cancelAllPending();
+    unload();
     expect(fn1).toHaveBeenCalledOnce();
     expect(fn2).toHaveBeenCalledOnce();
   });
@@ -47,7 +51,7 @@ describe("cancelAllPending + registered cleanup", () => {
     const fn = vi.fn();
     const unreg = registerCleanup(fn);
     unreg();
-    cancelAllPending();
+    unload();
     expect(fn).not.toHaveBeenCalled();
   });
 
@@ -59,13 +63,13 @@ describe("cancelAllPending + registered cleanup", () => {
     const consoleErr = vi.spyOn(console, "error").mockImplementation(() => undefined);
     registerCleanup(fn1);
     registerCleanup(fn2);
-    cancelAllPending();
+    unload();
     expect(fn1).toHaveBeenCalledOnce();
     expect(fn2).toHaveBeenCalledOnce();
     consoleErr.mockRestore();
   });
 
-  it("cancels multiple actions and runs hooks in one cancelAllPending call", async () => {
+  it("cancels multiple actions and runs hooks in one unload", async () => {
     let abort1 = false;
     let abort2 = false;
     const a1 = defineAction({
@@ -92,7 +96,7 @@ describe("cancelAllPending + registered cleanup", () => {
     registerCleanup(hook);
     const p1 = a1.dispatch({});
     const p2 = a2.dispatch({});
-    cancelAllPending();
+    unload();
     await Promise.all([p1, p2]);
     expect(abort1).toBe(true);
     expect(abort2).toBe(true);

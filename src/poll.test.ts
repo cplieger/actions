@@ -9,7 +9,7 @@ vi.mock("./notifier.js", () => ({
 
 import { defineAction, _resetForTest as resetDefine } from "./define.js";
 import { _resetForTest as resetRegistry } from "./registry.js";
-import { _resetForTest as resetCleanup, _cancelAllForTest as cancelAllForTest } from "./cleanup.js";
+import { _resetForTest as resetCleanup } from "./cleanup.js";
 import { pollAction } from "./poll.js";
 
 beforeEach(() => {
@@ -375,7 +375,7 @@ describe("pollAction — cleanup integration", () => {
     await Promise.resolve();
     expect(count).toBe(1);
 
-    cancelAllForTest();
+    window.dispatchEvent(new Event("beforeunload"));
 
     await vi.advanceTimersByTimeAsync(500);
     expect(count).toBe(1);

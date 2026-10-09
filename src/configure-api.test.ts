@@ -133,7 +133,7 @@ describe("configureApi — prepareHeaders", () => {
   it("receives the request spec as context", async () => {
     const spy = vi.fn();
     configureApi({
-      prepareHeaders: (headers, ctx) => {
+      prepareHeaders: (_headers, ctx) => {
         spy(ctx.spec);
       },
     });

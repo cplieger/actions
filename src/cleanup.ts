@@ -55,11 +55,6 @@ function installBeforeunloadOnce(): void {
   }
 }
 
-/** Test-only: invoke the same cleanup logic that beforeunload runs. */
-export function _cancelAllForTest(): void {
-  cancelAllPending();
-}
-
 /** Test-only: clear both registries + uninstall the listener. */
 export function _resetForTest(): void {
   trackedActions.clear();
