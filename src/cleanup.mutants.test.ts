@@ -3,7 +3,7 @@
 // install-once / remove-on-reset bookkeeping — nothing else pins either.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-import { registerCleanup, _registerAction, _cancelAllForTest, _resetForTest } from "./cleanup.js";
+import { registerCleanup, _registerAction, _resetForTest } from "./cleanup.js";
 import type { Action } from "./types.js";
 
 /** Minimal tracked-action stand-in: cleanup only ever reads `name` + `cancel`. */
@@ -33,7 +33,7 @@ describe("cancelAllPending — a throwing participant is reported and does not s
     _registerAction(cancellable("calm.op", survivor));
 
     expect(() => {
-      _cancelAllForTest();
+      window.dispatchEvent(new Event("beforeunload"));
     }).not.toThrow();
 
     expect(survivor).toHaveBeenCalledTimes(1);
@@ -52,7 +52,7 @@ describe("cancelAllPending — a throwing participant is reported and does not s
     registerCleanup(survivor);
 
     expect(() => {
-      _cancelAllForTest();
+      window.dispatchEvent(new Event("beforeunload"));
     }).not.toThrow();
 
     expect(survivor).toHaveBeenCalledTimes(1);

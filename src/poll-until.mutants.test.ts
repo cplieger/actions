@@ -3,7 +3,7 @@
 // `maxMs` cap can never shorten the first wait), and each wait's abortable
 // sleep tears its own listener off the caller's signal whichever side of the
 // race wins — a long poll on one signal must not accumulate listeners.
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi, afterEach, type MockInstance } from "vitest";
 
 import { pollUntil } from "./poll-until.js";
 
@@ -13,7 +13,7 @@ afterEach(() => {
 });
 
 function abortOptions(
-  spy: ReturnType<typeof vi.spyOn<AbortSignal, "addEventListener">>,
+  spy: MockInstance<AbortSignal["addEventListener"]>,
 ): { signal?: AbortSignal } | undefined {
   const call = spy.mock.calls.find(([type]) => type === "abort");
   return call?.[2] as { signal?: AbortSignal } | undefined;

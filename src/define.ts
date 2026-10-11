@@ -765,6 +765,7 @@ export function _resetForTest(): void {
   activeDedupes.clear();
 }
 
+// deadset:ignore DS1004 -- the leak tests read the private registry sizes to prove they drain to empty
 export function _internalsForTest(): { scopeChains: number; activeDedupes: number } {
   return { scopeChains: scopeChains.size, activeDedupes: activeDedupes.size };
 }

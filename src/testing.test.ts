@@ -6,7 +6,7 @@ import { configure } from "./notifier.js";
 import { apiAction, configureApi } from "./api.js";
 import { configureTransport, transportAction } from "./transport.js";
 import { getActionLog, pendingCount } from "./registry.js";
-import { registerCleanup, _cancelAllForTest as cancelAll } from "./cleanup.js";
+import { registerCleanup } from "./cleanup.js";
 
 beforeEach(() => {
   resetActionFramework();
@@ -72,9 +72,7 @@ describe("resetActionFramework", () => {
   });
 
   it("clears the configured api baseUrl/fetchFn", async () => {
-    const customFetch = vi.fn(
-      async (_input: RequestInfo | URL, _init?: RequestInit) => new Response("{}", { status: 200 }),
-    );
+    const customFetch = vi.fn(async () => new Response("{}", { status: 200 }));
     configureApi({
       baseUrl: "https://api.example.com",
       fetchFn: customFetch as unknown as typeof fetch,
@@ -108,8 +106,11 @@ describe("resetActionFramework", () => {
 
     resetActionFramework();
 
-    cancelAll();
+    const afterReset = vi.fn();
+    registerCleanup(afterReset);
+    window.dispatchEvent(new Event("beforeunload"));
 
+    expect(afterReset).toHaveBeenCalledOnce();
     expect(hook).not.toHaveBeenCalled();
   });
 
