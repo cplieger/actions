@@ -1,5 +1,5 @@
-// A joiner must inherit the primary's cancellation, not the "deduped dispatch
-// did not succeed" fallback, on both shapes of cancel.
+// A joiner must inherit the primary's cancellation on both shapes of cancel,
+// and must still settle when the primary never got as far as an outcome.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 vi.mock("./notifier.js", () => ({
   configure: vi.fn(),
@@ -73,6 +73,55 @@ describe("deduped joiner of a cancelled primary", () => {
 
     await expect(outcomeOrPending(joiner.outcome)).resolves.toEqual({ status: "cancelled" });
     await expect(primary.outcome).resolves.toEqual({ status: "cancelled" });
+  });
+});
+
+describe("deduped joiner of a primary that threw before running", () => {
+  it("fires the joiner's onSettled when the primary's idempotencyKey throws", async () => {
+    const settled: string[] = [];
+    const action = defineAction<void, string>({
+      name: "dedupe.primary_setup_throws",
+      dedupe: true,
+      error: false,
+      idempotencyKey: () => {
+        throw new Error("key generator failed");
+      },
+      run: async () => "never reached",
+    });
+
+    const primary = action.dispatch();
+    // The primary's own promise rejects here, which is the state the joiner has
+    // to recover from; its rejection is not this test's subject.
+    primary.catch(() => undefined);
+    const joiner = action.dispatch(undefined, {
+      onSettled: () => {
+        settled.push("joiner");
+      },
+    });
+
+    await expect(joiner).resolves.toBeNull();
+    expect(settled).toEqual(["joiner"]);
+  });
+
+  it("reports the primary's thrown setup error as the joiner's outcome", async () => {
+    const action = defineAction<void, string>({
+      name: "dedupe.primary_setup_throws_outcome",
+      dedupe: true,
+      error: false,
+      idempotencyKey: () => {
+        throw new Error("key generator failed");
+      },
+      run: async () => "never reached",
+    });
+
+    const primary = action.dispatch();
+    primary.catch(() => undefined);
+    const joiner = action.dispatch();
+
+    await expect(outcomeOrPending(joiner.outcome)).resolves.toMatchObject({
+      status: "error",
+      error: { message: "key generator failed" },
+    });
   });
 });
 

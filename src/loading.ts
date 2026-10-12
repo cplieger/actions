@@ -21,11 +21,6 @@ export function bindLoadingState(
   opts: BindLoadingOptions = {},
 ): () => void {
   const names: readonly string[] = typeof actionName === "string" ? [actionName] : actionName;
-  if (names.length === 0) {
-    return () => {
-      /* noop */
-    };
-  }
 
   const {
     ariaBusy = true,
@@ -71,8 +66,10 @@ export function bindLoadingState(
     hadFocus = false;
   };
 
+  // An empty name list sums nothing, so this stays false for the binding's
+  // whole life and the effect below never touches the element.
   const readPending = (): boolean =>
-    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion -- length checked above
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion -- the length-1 branch proves index 0
     names.length === 1 ? isPending(names[0]!) : pendingCount(names) > 0;
 
   const run = (): undefined => {

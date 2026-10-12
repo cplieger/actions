@@ -195,6 +195,30 @@ describe("pollAction — refreshOnFocus", () => {
 
     stop();
   });
+
+  it("ignores a focus event while paused by a hidden document", async () => {
+    let count = 0;
+    const action = defineAction<undefined, number>({
+      name: "test.poll.focus_while_hidden",
+      run: async () => ++count,
+    });
+
+    Object.defineProperty(document, "hidden", { value: true, configurable: true });
+    vi.useFakeTimers();
+    const stop = pollAction(action, undefined, { interval: 10_000 });
+
+    await vi.runAllTicks();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(count).toBe(0);
+
+    window.dispatchEvent(new Event("focus"));
+
+    await vi.runAllTicks();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(count).toBe(0);
+
+    stop();
+  });
 });
 
 describe("pollAction — backoffOnError", () => {

@@ -112,9 +112,8 @@ export function pollAction<TArgs, TResult>(
   };
 
   const onFocus = (): void => {
-    if (stopped || paused || inFlight) {
-      return;
-    }
+    // No guard here: `tick` drops a poll that is stopped, paused or already in
+    // flight, so re-checking would make its own guard unreachable.
     void tick();
   };
 
