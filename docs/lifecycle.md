@@ -13,7 +13,7 @@ A dispatch that runs gets its own id, cancellation signal and entry in the actio
 5. On success, the success notification and the success callbacks fire. On an error, `rollback` runs, then the error notification and the error callbacks fire. On a cancellation, only `rollback` runs.
 6. `onSettled` fires in every case.
 
-`dispatch()` resolves to the result, or to `null` after a failure or a cancellation. It rejects in two cases, both caused by code you pass in. An `idempotencyKey` function that throws rejects the dispatch, and so does a thrown value whose `message` cannot be read. In both cases `handle.outcome` of that dispatch never settles. A `scope` or `dedupe` function that throws makes `dispatch()` itself throw.
+`dispatch()` resolves to the result, or to `null` after a failure or a cancellation. It rejects in two cases, both caused by code you pass in. An `idempotencyKey` function that throws rejects the dispatch, and so does a thrown value whose `message` cannot be read. In both cases `handle.outcome` of that dispatch never settles. A dispatch that joined it through `dedupe` resolves to `null`, runs its `onSettled`, and its outcome is an error carrying the thrown value. A `scope` or `dedupe` function that throws makes `dispatch()` itself throw.
 
 A throw from `onSuccess`, `onError`, `onSettled`, `rollback` or a notification message function is logged to the console and leaves the outcome unchanged. A throw from `optimistic` fails the dispatch before `run()` starts, with the code `optimistic_failed` unless the thrown error carries its own code.
 
