@@ -68,7 +68,7 @@ Without a DOM, the pause and the focus refresh are skipped and the loop polls on
 - `isPending(name)` and `pendingCount(names?)` are reactive. Read inside a [`@cplieger/reactive`](https://github.com/cplieger/reactive) effect, they rerun the effect when the count changes.
 - `registerCleanup(fn)` runs `fn` on page unload, beside the cancellation of every dispatch in flight. It returns a function that removes the hook.
 
-The log keeps each dispatch's arguments in memory, and every listener receives them. Keep secrets, tokens and personal data out of action arguments. When more than 1000 dispatches are in flight at once, the oldest is dropped from the log with a console warning, because a dispatch that never settles usually means a bug.
+The log keeps each dispatch's arguments and result in memory, and every listener receives them. A definition whose arguments or result carry a secret, a token or personal data sets [`sensitive: true`](lifecycle.md#sensitive-actions), and its entries carry neither, nor the error. When more than 1000 dispatches are in flight at once, the oldest is dropped from the log with a console warning, because a dispatch that never settles usually means a bug.
 
 ## Running without a DOM
 

@@ -12,7 +12,7 @@ actions is built for vanilla TypeScript front ends that want the same behavior o
 
 - An optimistic update changes the UI before the request, and a rollback undoes it on failure or cancellation.
 - Retry backs off exponentially, retries only failures you mark as transient, and pauses while the browser is offline.
-- `scope` runs same-key dispatches in order, `dedupe` joins them into one request, and `abort()` cancels a single dispatch.
+- `scope` runs same-key dispatches in order, `dedupe` joins them into one request, and `abort()` or an `AbortSignal` passed to `dispatch()` cancels a single dispatch.
 - `isPending` and `pendingCount` are reactive through `@cplieger/reactive`, so a button can disable itself while its action runs.
 - A failure or a cancellation resolves the dispatch to `null` instead of rejecting, with [two exceptions](docs/lifecycle.md#order-of-a-dispatch), and `handle.outcome` tells the three endings apart.
 - `onSuccess`, `onError` and `onSettled` follow TanStack Query's mutation callbacks, and `configureApi` follows RTK Query's `fetchBaseQuery`.
@@ -98,7 +98,7 @@ The full reference, generated from the doc comments, is on [JSR](https://jsr.io/
 - An error message can include text from the server's response. Your `configure` adapter renders it as text, never as HTML.
 - In `decodeError`, `info.body` is the parsed body of a failed response. Check its shape before you read a field.
 - With `baseUrl` set, a request path cannot change the origin. Without `baseUrl`, the path goes to `fetch()` unchanged, so never build a whole path from server text.
-- The action log and the retry button keep each dispatch's arguments in memory. Keep secrets, tokens and personal data out of action arguments.
+- The action log, its listeners and the retry button keep each dispatch's arguments and result in memory. Set `sensitive: true` on an action whose arguments or result carry a secret, a token or personal data. Its log entries then carry no arguments, result or error, and it takes no retry. See [Sensitive actions](docs/lifecycle.md#sensitive-actions).
 
 ## Unsupported by design
 
