@@ -169,7 +169,7 @@ describe("dedupe + cancel interaction", () => {
     expect(activeDedupes).toBe(0);
   });
 
-  it("aborting a deduped follower is a no-op — it still settles with the leader's result", async () => {
+  it("aborting a deduped follower settles it alone as cancelled; the leader still finishes", async () => {
     let leaderResolve!: (v: string) => void;
     const action = defineAction<string, string>({
       name: "test.dedupe_follower_abort",
@@ -188,7 +188,8 @@ describe("dedupe + cancel interaction", () => {
     const r1 = await h1;
     const r2 = await h2;
     expect(r1).toBe("done");
-    expect(r2).toBe("done");
+    expect(r2).toBeNull();
+    expect(await h2.outcome).toEqual({ status: "cancelled" });
     expect(onSettled2).toHaveBeenCalledTimes(1);
   });
 });

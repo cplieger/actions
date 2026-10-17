@@ -17,37 +17,50 @@ export interface ActionErrorLike {
   readonly cause?: unknown;
 }
 
-/** Snapshot of a single in-flight or historical action invocation.
- *  Stored in the registry log for observability. */
-export interface ActionInstance<TArgs = unknown, TResult = unknown> {
+/** @internal The lifecycle fields every action-log record carries, sensitive
+ *  or not. Each is a number or a string the framework sets, so none can hold
+ *  a value from args, result or run(); a payload-bearing field belongs on the
+ *  non-sensitive arm of {@link ActionInstance}. */
+export interface ActionInstanceFields {
   /** Unique per dispatch. */
   readonly id: string;
   /** Matches ActionDefinition.name. */
   readonly name: string;
   readonly status: ActionLifecycleStatus;
-  readonly args: TArgs;
   /** Date.now() when dispatch() was called. */
   readonly dispatchedAt: number;
   /** Date.now() when run() begins (after scope queue). */
   readonly startedAt: number;
   /** Date.now() at terminal state. */
   readonly completedAt?: number;
-  /** Present iff status === "success". */
-  readonly result?: TResult;
-  /** Present iff status === "error". */
-  readonly error?: ActionErrorLike;
   /** Total run() invocations (1 = no retry; >1 = retries fired). */
   readonly attempts?: number;
 }
+
+/** Snapshot of a single in-flight or historical action invocation, stored in
+ *  the registry log. A `sensitive` definition's records carry no `args`,
+ *  `result` or `error`; narrow on `sensitive` before reading `args`. */
+export type ActionInstance<TArgs = unknown, TResult = unknown> =
+  | (ActionInstanceFields & {
+      readonly sensitive?: never;
+      readonly args: TArgs;
+      /** Present iff status === "success". */
+      readonly result?: TResult;
+      /** Present iff status === "error". */
+      readonly error?: ActionErrorLike;
+    })
+  | (ActionInstanceFields & {
+      readonly sensitive: true;
+      readonly args?: never;
+      readonly result?: never;
+      readonly error?: never;
+    });
 
 /** Notification wiring: either a literal string (used as-is), or a function
  *  computed from action args + result/error at call time. Pass false
  *  to opt out of the default notification for that branch. */
 export type NotificationSpec<TArgs, TPayload> =
   string | ((args: TArgs, payload: TPayload) => string) | false;
-
-/** @deprecated Use {@link NotificationSpec} instead. */
-export type ToastSpec<TArgs, TPayload> = NotificationSpec<TArgs, TPayload>;
 
 /** Per-dispatch context passed to run() as the 3rd argument. Mostly
  *  populated by the framework so adapters (apiAction, transportAction)
@@ -77,23 +90,12 @@ export interface RetryConfig {
 /** Standard retry config: 2 retries, 300ms initial delay. */
 export const RETRY_STANDARD: RetryConfig = { count: 2, delay: 300 } as const;
 
-/** Declarative description of an action, handed to defineAction() once and
- *  consulted on every dispatch.
- *
- *  `name` and `run` are the only required members; each of the rest opts into
- *  one lifecycle behaviour. The function-valued ones (`optimistic`, `scope`,
- *  `dedupe`, `idempotencyKey`, and the notification specs) are re-evaluated per
- *  dispatch, so they may derive from args.
- *
- *  Hooks are invoked defensively: a throw from `onSuccess`, `onError`,
- *  `onSettled`, `rollback` or a notification spec is logged and leaves the
- *  dispatch's outcome unchanged. `optimistic` is the exception — a throw there
- *  fails the dispatch and run() never starts, with code `"optimistic_failed"`
- *  unless the thrown error carries a code of its own.
- *
- *  `scope`, `dedupe` and the handle's abort() answer three different
- *  concurrency questions: serialize same-key dispatches, collapse same-key
- *  dispatches into one in-flight promise, and cancel a single dispatch. */
+/** Declarative description of an action, consulted on every dispatch. Only
+ *  `name` and `run` are required; function-valued members are re-evaluated
+ *  per dispatch. A throw from a callback, `rollback` or a notification spec
+ *  is logged and leaves the outcome unchanged; a throw from `optimistic`
+ *  fails the dispatch before run(), with code `"optimistic_failed"` unless
+ *  the error carries its own. */
 export interface ActionDefinition<TArgs, TResult, TOp = unknown> {
   /** Stable identifier, e.g. "chat.delete", "files.create".
    *  Used in the registry log + as a default notification prefix. */
@@ -151,6 +153,14 @@ export interface ActionDefinition<TArgs, TResult, TOp = unknown> {
 
   /** Collapse concurrent dispatches with matching key into one in-flight promise. */
   dedupe?: boolean | ((args: TArgs) => string);
+
+  /** For a call carrying a plaintext secret: the action log and every
+   *  registry listener get each instance without `args`, `result` and
+   *  `error`, so the result and the error reach only the dispatch's handle,
+   *  the callbacks and the notifications (the default and string error
+   *  notifications quote the error's message). Combined with `retry` or
+   *  `retryable`, defineAction() throws: a retry button would hold the args. */
+  sensitive?: true;
 }
 
 /** A registered action, returned by defineAction(). Can be dispatched
@@ -182,8 +192,10 @@ export type ActionOutcome<TResult> =
  *  method for per-dispatch cancellation (mirrors RTK createAsyncThunk).
  *  Can be awaited directly as a Promise. */
 export interface DispatchHandle<TResult> extends Promise<TResult | null> {
-  /** Abort this specific dispatch. Other in-flight dispatches of the
-   *  same action are unaffected. Mirrors RTK's promise.abort(). */
+  /** Abort this specific dispatch; other in-flight dispatches of the same
+   *  action are unaffected. One still queued behind its `scope` settles
+   *  cancelled at once. On a handle that joined through `dedupe`, only this
+   *  call settles cancelled: the dispatch it joined keeps running. */
   abort(): void;
   /** Opt-in typed terminal outcome. Resolves alongside the handle (it never
    *  rejects) with a discriminated {@link ActionOutcome}, letting a caller
@@ -203,6 +215,11 @@ export interface DispatchOptions<TArgs = unknown, TResult = unknown> {
   readonly onError?: (err: ActionErrorLike, args: TArgs) => void;
   /** Per-call settled callback. Fires for success, error, AND cancellation. */
   readonly onSettled?: (args: TArgs) => void;
+  /** Aborting it cancels this dispatch as `abort()` does: before it starts
+   *  (a dispatch queued behind its `scope` settles at once and never runs),
+   *  or mid-run, aborting run()'s signal with this signal's reason. An
+   *  already-aborted signal cancels the dispatch without running it. */
+  readonly signal?: AbortSignal;
 }
 
 /** HTTP request descriptor used by apiAction(). GET is included for

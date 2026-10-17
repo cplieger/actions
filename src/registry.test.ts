@@ -10,7 +10,9 @@ import {
 } from "./registry.js";
 import type { ActionInstance } from "./types.js";
 
-function makeInstance(overrides: Partial<ActionInstance> = {}): ActionInstance {
+type PlainInstance = Exclude<ActionInstance, { readonly sensitive: true }>;
+
+function makeInstance(overrides: Partial<PlainInstance> = {}): ActionInstance {
   return {
     id: `id-${Math.random().toString(36).slice(2)}`,
     name: "test.action",

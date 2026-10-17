@@ -54,7 +54,7 @@ Three settings answer three different questions.
 
 - `scope` serializes. Dispatches with the same scope key run one after the other, in dispatch order. A string gives every dispatch the same key, and a function derives the key from the arguments.
 - `dedupe` collapses. A dispatch whose key matches one in flight resolves with that dispatch's result and sends no request of its own. `dedupe: true` keys on the serialized arguments, and a function returns the key. A joined dispatch runs its own callbacks, and its outcome carries no `attempts`.
-- `handle.abort()` cancels one dispatch, and `action.cancel()` cancels every dispatch of that action in flight. `abort()` does nothing on a handle that joined through `dedupe`.
+- `handle.abort()` or the dispatch's `signal` cancels one dispatch, and `action.cancel()` cancels every dispatch of that action in flight. On a dispatch that joined through `dedupe`, either one ends that call alone as cancelled, and the dispatch it joined keeps running.
 
 ## Cancellation and timeouts
 
@@ -65,6 +65,14 @@ const handle = action.dispatch(args);
 handle.abort(); // cancels this dispatch only
 const result = await handle; // null
 ```
+
+`dispatch(args, { signal })` ties a dispatch to an `AbortSignal` you own, such as the signal of the view that started it. Aborting the signal does what `handle.abort()` does:
+
+- A dispatch still waiting for an earlier one with the same `scope` key ends as cancelled at once. Its `run()` and `optimistic` never run, and the dispatches behind it keep their order.
+- A dispatch whose `run()` is in flight aborts the signal passed to `run()`, with your signal's reason, and ends as cancelled. `rollback` runs.
+- A signal that is already aborted cancels the dispatch before anything runs.
+
+`onSettled` fires once in each case. The dispatch stops listening to your signal when it settles.
 
 `timeout` on a definition is a limit in milliseconds for every run and retry wait of a dispatch. It starts after any wait for an earlier dispatch with the same `scope` key. When the signal stops `run()`, or the time runs out during a retry wait, the dispatch is not retried and ends as an error with the code `timeout`.
 
@@ -122,6 +130,24 @@ switch (outcome.status) {
 - `transportAction` adds it to the command as `idempotency_key`, exported as `IDEMPOTENCY_COMMAND_FIELD`.
 
 Import the two constants in a custom `run()` instead of copying the strings.
+
+## Sensitive actions
+
+Set `sensitive: true` on an action whose arguments or result carry a password, a key, a token or personal data.
+
+- The action log and every `subscribeToActions` and `subscribeByName` listener get each of its entries without `args`, `result` and `error`, marked `sensitive: true`. Status, timings and the attempt count are kept. The error is dropped because its message or cause can quote the arguments.
+- The result reaches only the dispatch's handle, its `outcome`, the `onSuccess` callbacks and a `success` message function. The error reaches only the handle's `outcome`, the `onError` callbacks and the error notification. That notification is an `error` message function, or, with a string or the default spec, the notifier's text, which quotes the error's message. Set `error: false` or a function when the message can quote the arguments.
+- `defineAction` throws a `TypeError` when the definition also sets `retry` or `retryable`, because the error message's retry button would keep the arguments in memory.
+
+```typescript
+const setPassword = defineAction({
+  name: "account.set_password",
+  sensitive: true,
+  run: async (args: { password: string }, signal) => auth.setPassword(args.password, { signal }),
+});
+```
+
+Your own callbacks and notification message functions still receive the arguments, the result and the error, so keep the secret out of what they log or show.
 
 ## Action names
 
