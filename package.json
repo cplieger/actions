@@ -17,7 +17,7 @@
     "lint:fix": "eslint . --fix && prettier --write ."
   },
   "dependencies": {
-    "@cplieger/fetch": "^2.1.0",
+    "@cplieger/fetch": "^2.3.0-dev",
     "@cplieger/reactive": "^2.2.0"
   },
   "overrides": {
