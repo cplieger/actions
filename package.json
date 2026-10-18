@@ -18,7 +18,7 @@
   },
   "dependencies": {
     "@cplieger/fetch": "^2.3.0-dev",
-    "@cplieger/reactive": "^2.2.0"
+    "@cplieger/reactive": "^2.3.0-dev"
   },
   "overrides": {
     "qs": "^6.15.2"
