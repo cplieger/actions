@@ -8,6 +8,7 @@ vi.mock("./notifier.js", () => ({
   notifyError: vi.fn(),
   _resetNotifierForTest: vi.fn(),
 }));
+import { createRoot, effect, signal } from "@cplieger/reactive";
 import { defineAction } from "./define.js";
 import { bindLoadingState } from "./loading.js";
 import { blurredOff } from "./test-helpers/focus.js";
@@ -104,6 +105,51 @@ describe("bindLoadingState — elements in the document", () => {
     settle();
     await p;
     expect(btn.disabled).toBe(false);
+  });
+
+  it("lets go of a removed element in the turn it notices, leaving nothing scheduled", async () => {
+    vi.useFakeTimers({ toFake: ["queueMicrotask"] });
+    try {
+      const { action, settle } = controllable("load.release_now");
+      const btn = attachedButton();
+      bindLoadingState("load.release_now", btn);
+      btn.remove();
+
+      const first = action.dispatch({});
+      expect(vi.getTimerCount()).toBe(0);
+      vi.useRealTimers();
+      settle();
+      await first;
+
+      document.body.appendChild(btn);
+      const second = action.dispatch({});
+      expect(btn.disabled).toBe(false);
+      expect(btn.getAttribute("aria-busy")).toBeNull();
+      settle();
+      await second;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("restores an element it let go of while pending when unbound, once", async () => {
+    const { action, settle } = controllable("load.release_pending");
+    const btn = attachedButton();
+    const unbind = bindLoadingState("load.release_pending", btn, { pendingClass: "busy" });
+    const p = action.dispatch({});
+    btn.remove();
+    settle();
+    await p;
+    expect(btn.disabled).toBe(true);
+
+    unbind();
+    expect(btn.disabled).toBe(false);
+    expect(btn.getAttribute("aria-busy")).toBeNull();
+    expect(btn.classList.contains("busy")).toBe(false);
+
+    btn.disabled = true;
+    unbind();
+    expect(btn.disabled).toBe(true);
   });
 
   it("tracks an element attached after binding, then stops once it is removed", async () => {
@@ -303,6 +349,115 @@ describe("bindLoadingState — the disposer", () => {
     btn.disabled = true;
     unbind();
     expect(btn.disabled).toBe(true);
+
+    settle();
+    await p;
+  });
+});
+
+describe("bindLoadingState — under a reactive owner", () => {
+  it("ends with a reactive root it was bound under, restoring a pending element", async () => {
+    const { action, settle } = controllable("load.owner_root");
+    const btn = attachedButton();
+    const disposeRoot = createRoot((dispose) => {
+      bindLoadingState("load.owner_root", btn, { pendingClass: "busy" });
+      return dispose;
+    });
+    const first = action.dispatch({});
+    expect(btn.disabled).toBe(true);
+
+    disposeRoot();
+    expect(btn.disabled).toBe(false);
+    expect(btn.getAttribute("aria-busy")).toBeNull();
+    expect(btn.classList.contains("busy")).toBe(false);
+    settle();
+    await first;
+
+    const second = action.dispatch({});
+    expect(btn.disabled).toBe(false);
+    expect(btn.getAttribute("aria-busy")).toBeNull();
+    settle();
+    await second;
+  });
+
+  it("ends with the run of an effect it was bound in, once that effect re-runs", async () => {
+    const { action, settle } = controllable("load.owner_effect");
+    const btn = attachedButton();
+    const generation = signal(0);
+    const disposeRoot = createRoot((dispose) => {
+      effect(() => {
+        if (generation.value === 0) {
+          bindLoadingState("load.owner_effect", btn, { pendingClass: "busy" });
+        }
+      });
+      return dispose;
+    });
+    const first = action.dispatch({});
+    expect(btn.disabled).toBe(true);
+
+    generation.value = 1;
+    expect(btn.disabled).toBe(false);
+    expect(btn.getAttribute("aria-busy")).toBeNull();
+    expect(btn.classList.contains("busy")).toBe(false);
+    settle();
+    await first;
+
+    const second = action.dispatch({});
+    expect(btn.disabled).toBe(false);
+    settle();
+    await second;
+    disposeRoot();
+  });
+
+  it("drops a binding that let go of a detached element from its owner, leaving the element alone", async () => {
+    const { action, settle } = controllable("load.owner_self_release");
+    const btn = attachedButton();
+    // Owner exposes no child accessor; the internal set is the only way to
+    // see what the caller's root still holds.
+    let callerOwner!: { readonly _children?: ReadonlySet<unknown> };
+    const disposeRoot = createRoot((dispose, owner) => {
+      callerOwner = owner as unknown as typeof callerOwner;
+      bindLoadingState("load.owner_self_release", btn);
+      return dispose;
+    });
+    const p = action.dispatch({});
+    expect(btn.disabled).toBe(true);
+
+    btn.remove();
+    settle();
+    await p;
+    expect(callerOwner._children?.size ?? 0).toBe(0);
+
+    disposeRoot();
+    expect(btn.disabled).toBe(true);
+    expect(btn.getAttribute("aria-busy")).toBe("true");
+  });
+
+  it("restores outside the closing binding, so a focus handler can create an effect", async () => {
+    const { action, settle } = controllable("load.unbind_focus_effect");
+    const btn = attachedButton();
+    btn.focus();
+    const unbind = bindLoadingState("load.unbind_focus_effect", btn);
+    const blurred = blurredOff(btn);
+    const p = action.dispatch({});
+    await blurred;
+
+    let created: unknown = "not focused";
+    btn.addEventListener(
+      "focus",
+      () => {
+        try {
+          effect(() => {})();
+          created = true;
+        } catch (err) {
+          created = err;
+        }
+      },
+      { once: true },
+    );
+    unbind();
+    expect(created).toBe(true);
+    expect(btn.disabled).toBe(false);
 
     settle();
     await p;
