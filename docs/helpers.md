@@ -48,6 +48,7 @@ Without a DOM, the pause and the focus refresh are skipped and the loop polls on
 - When the action settles, the element is enabled again. `preserveDisabled: true` restores the disabled state it had before, and `disabledFn()` decides it instead.
 - A focused element that was disabled gets its focus back when it is enabled again.
 - The binding removes itself when a later change of pending state finds the element detached from the DOM. An element that is detached and attached again between two such changes, for example by a list that reuses nodes, keeps its binding.
+- A binding made under a `@cplieger/reactive` owner, such as `createRoot`, a `bindList` row or an effect created under one, ends with that owner and restores the element, as the returned function does.
 
 ## Button feedback
 
