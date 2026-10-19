@@ -1,3 +1,5 @@
+import { createRoot } from "@cplieger/reactive";
+
 import { registerCleanup } from "./cleanup.js";
 import type { Action } from "./types.js";
 
@@ -46,6 +48,12 @@ export function pollAction<TArgs, TResult>(
   let paused = false;
   let inFlight = false;
   let failures = 0;
+
+  // First, so an owner already being disposed throws before anything starts.
+  const releaseOwner = createRoot((dispose, owner) => {
+    owner.onDispose(stop);
+    return dispose;
+  });
 
   function nextDelay(): number {
     if (backoff === undefined || failures === 0) {
@@ -128,6 +136,7 @@ export function pollAction<TArgs, TResult>(
     }
     listenerCtrl.abort();
     unregisterCleanup();
+    releaseOwner();
   }
 
   const listenerCtrl = new AbortController();
