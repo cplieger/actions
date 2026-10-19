@@ -11,6 +11,7 @@ This page covers the helpers around a dispatch, for developers who debounce inpu
 - `flush(args?)` dispatches now with the latest arguments, or the ones given, and returns the action's promise. It does nothing when no call is waiting and no arguments are given.
 - `cancel()` drops the waiting arguments. A dispatch already started is cancelled through the action or its handle.
 - `isPending()` tells whether a call is waiting.
+- A debouncer made under a `@cplieger/reactive` owner, such as `createRoot`, a `bindList` row or an effect created under one, ends with that owner: the waiting call is dropped and later calls dispatch nothing.
 
 There is no `maxWait`. Call `flush()` when a dispatch must fire.
 
@@ -25,6 +26,7 @@ There is no `maxWait`. Call `flush()` when a dispatch must fire.
 - `backoffOnError: { factor, max }` stretches the gap by `factor` after each failed poll in a row, up to `max`. A poll fails when the dispatch resolves to `null`.
 - `onSuccess(result)` fires for each result that is not `null`. A throw from it is logged and polling goes on.
 - The stop function can be called more than once. It also runs on page unload.
+- A poller made under a `@cplieger/reactive` owner, such as `createRoot`, a `bindList` row or an effect created under one, stops with that owner, as the stop function does.
 
 Without a DOM, the pause and the focus refresh are skipped and the loop polls on a plain interval.
 

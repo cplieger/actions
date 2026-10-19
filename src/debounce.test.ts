@@ -8,7 +8,8 @@ vi.mock("./notifier.js", () => ({
 import { defineAction, _resetForTest as resetDefine } from "./define.js";
 import { _resetForTest as resetRegistry } from "./registry.js";
 import { _resetForTest as resetCleanup } from "./cleanup.js";
-import { debouncedDispatch } from "./debounce.js";
+import { createRoot } from "@cplieger/reactive";
+import { debouncedDispatch, type DebouncedDispatch } from "./debounce.js";
 
 beforeEach(() => {
   resetDefine();
@@ -283,5 +284,71 @@ describe("debouncedDispatch — cancel() releases the timer and the pending flag
     expect(debounced.isPending()).toBe(true);
     debounced.cancel();
     expect(debounced.isPending()).toBe(false);
+  });
+});
+
+describe("debouncedDispatch — under a reactive owner", () => {
+  function underRoot(leading = false) {
+    const { action, run } = makeAction();
+    let debounced!: DebouncedDispatch<string>;
+    const disposeRoot = createRoot((dispose) => {
+      debounced = debouncedDispatch(action, { wait: 100, leading });
+      return dispose;
+    });
+    return { debounced, disposeRoot, run };
+  }
+
+  it("drops the scheduled dispatch when its owner is disposed, and dispatches nothing after", () => {
+    const { debounced, disposeRoot, run } = underRoot();
+    debounced("a");
+    disposeRoot();
+    expect(vi.getTimerCount()).toBe(0);
+    expect(debounced.isPending()).toBe(false);
+
+    debounced("b");
+    expect(debounced.flush("c")).toBeUndefined();
+    debounced.cancel();
+    vi.advanceTimersByTime(500);
+    expect(run).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("ends a leading-edge cooldown with its owner", () => {
+    const { debounced, disposeRoot, run } = underRoot(true);
+    debounced("a");
+    debounced("b");
+    expect(run).toHaveBeenCalledTimes(1);
+
+    disposeRoot();
+    expect(vi.getTimerCount()).toBe(0);
+    debounced("c");
+    vi.advanceTimersByTime(500);
+    expect(run).toHaveBeenCalledTimes(1);
+  });
+
+  it("arms no cooldown when a leading dispatch disposes its own owner", () => {
+    const run = vi.fn(async (args: string) => {
+      disposeRoot();
+      return args;
+    });
+    const action = defineAction({ name: "test.debounce.self_dispose", run });
+    let debounced!: DebouncedDispatch<string>;
+    const disposeRoot = createRoot((dispose) => {
+      debounced = debouncedDispatch(action, { wait: 100, leading: true });
+      return dispose;
+    });
+
+    debounced("a");
+    expect(run).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(0);
+    expect(debounced.isPending()).toBe(false);
+  });
+
+  it("keeps working outside any owner", () => {
+    const { action, run } = makeAction();
+    const debounced = debouncedDispatch(action, { wait: 100 });
+    debounced("a");
+    vi.advanceTimersByTime(100);
+    expect(run).toHaveBeenCalledTimes(1);
   });
 });
