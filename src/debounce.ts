@@ -1,3 +1,5 @@
+import { createRoot } from "@cplieger/reactive";
+
 import type { Action } from "./types.js";
 
 // A no-argument action's args ARE `undefined`, so it can't double as the
@@ -41,7 +43,10 @@ interface DebounceOptions {
  *
  *  `cancel()` discards scheduled args only. A dispatch already handed to the
  *  action is past this wrapper's reach — abort it through the action or its
- *  dispatch handle. */
+ *  dispatch handle.
+ *
+ *  Disposing the `@cplieger/reactive` owner it was created under cancels it
+ *  for good: later calls and `flush()` dispatch nothing. */
 export function debouncedDispatch<TArgs, TResult>(
   action: Action<TArgs, TResult>,
   opts: DebounceOptions,
@@ -50,8 +55,12 @@ export function debouncedDispatch<TArgs, TResult>(
   let lastArgs: TArgs | typeof NO_ARGS = NO_ARGS;
   let pending = false;
   let lastFiredAt = 0;
+  let ended = false;
 
   const fn = ((args: TArgs): void => {
+    if (ended) {
+      return;
+    }
     if (opts.leading === true) {
       const now = Date.now();
       if (now - lastFiredAt < opts.wait) {
@@ -64,6 +73,11 @@ export function debouncedDispatch<TArgs, TResult>(
         return;
       }
       void action.dispatch(args);
+      // The action's synchronous prefix may have disposed the owner.
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- set by owner disposal during dispatch
+      if (ended) {
+        return;
+      }
       lastFiredAt = now;
       lastArgs = NO_ARGS;
       // The timer below is a cooldown re-arm, not a pending dispatch.
@@ -105,6 +119,9 @@ export function debouncedDispatch<TArgs, TResult>(
   }
 
   fn.flush = (args?: TArgs): Promise<unknown> | undefined => {
+    if (ended) {
+      return undefined;
+    }
     if (timer !== undefined) {
       clearTimeout(timer);
       timer = undefined;
@@ -131,6 +148,13 @@ export function debouncedDispatch<TArgs, TResult>(
   };
 
   fn.isPending = (): boolean => pending;
+
+  createRoot((_dispose, owner) => {
+    owner.onDispose(() => {
+      ended = true;
+      fn.cancel();
+    });
+  });
 
   return fn;
 }

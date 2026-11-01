@@ -54,7 +54,5 @@ export type {
   RegistryListener,
   RequestSpec,
   RetryConfig,
-  // eslint-disable-next-line @typescript-eslint/no-deprecated -- backward-compat alias
-  ToastSpec,
 } from "./types.js";
 export { RETRY_STANDARD } from "./types.js";

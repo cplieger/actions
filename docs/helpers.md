@@ -11,6 +11,7 @@ This page covers the helpers around a dispatch, for developers who debounce inpu
 - `flush(args?)` dispatches now with the latest arguments, or the ones given, and returns the action's promise. It does nothing when no call is waiting and no arguments are given.
 - `cancel()` drops the waiting arguments. A dispatch already started is cancelled through the action or its handle.
 - `isPending()` tells whether a call is waiting.
+- A debouncer made under a `@cplieger/reactive` owner, such as `createRoot`, a `bindList` row or an effect created under one, ends with that owner: the waiting call is dropped and later calls dispatch nothing.
 
 There is no `maxWait`. Call `flush()` when a dispatch must fire.
 
@@ -25,6 +26,7 @@ There is no `maxWait`. Call `flush()` when a dispatch must fire.
 - `backoffOnError: { factor, max }` stretches the gap by `factor` after each failed poll in a row, up to `max`. A poll fails when the dispatch resolves to `null`.
 - `onSuccess(result)` fires for each result that is not `null`. A throw from it is logged and polling goes on.
 - The stop function can be called more than once. It also runs on page unload.
+- A poller made under a `@cplieger/reactive` owner, such as `createRoot`, a `bindList` row or an effect created under one, stops with that owner, as the stop function does.
 
 Without a DOM, the pause and the focus refresh are skipped and the loop polls on a plain interval.
 
@@ -48,6 +50,7 @@ Without a DOM, the pause and the focus refresh are skipped and the loop polls on
 - When the action settles, the element is enabled again. `preserveDisabled: true` restores the disabled state it had before, and `disabledFn()` decides it instead.
 - A focused element that was disabled gets its focus back when it is enabled again.
 - The binding removes itself when a later change of pending state finds the element detached from the DOM. An element that is detached and attached again between two such changes, for example by a list that reuses nodes, keeps its binding.
+- A binding made under a `@cplieger/reactive` owner, such as `createRoot`, a `bindList` row or an effect created under one, ends with that owner and restores the element, as the returned function does.
 
 ## Button feedback
 
@@ -68,7 +71,7 @@ Without a DOM, the pause and the focus refresh are skipped and the loop polls on
 - `isPending(name)` and `pendingCount(names?)` are reactive. Read inside a [`@cplieger/reactive`](https://github.com/cplieger/reactive) effect, they rerun the effect when the count changes.
 - `registerCleanup(fn)` runs `fn` on page unload, beside the cancellation of every dispatch in flight. It returns a function that removes the hook.
 
-The log keeps each dispatch's arguments in memory, and every listener receives them. Keep secrets, tokens and personal data out of action arguments. When more than 1000 dispatches are in flight at once, the oldest is dropped from the log with a console warning, because a dispatch that never settles usually means a bug.
+The log keeps each dispatch's arguments and result in memory, and every listener receives them. A definition whose arguments or result carry a secret, a token or personal data sets [`sensitive: true`](lifecycle.md#sensitive-actions), and its entries carry neither, nor the error. When more than 1000 dispatches are in flight at once, the oldest is dropped from the log with a console warning, because a dispatch that never settles usually means a bug.
 
 ## Running without a DOM
 

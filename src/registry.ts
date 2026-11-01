@@ -1,29 +1,3 @@
-// Two disjoint-lifetime structures so pending accounting cannot desync from
-// log eviction by construction: `inflight` holds pending dispatches (never
-// evicted by count, only the leak watchdog past MAX_INFLIGHT); `settled`
-// holds terminal snapshots, latest-per-id, bounded to MAX_LOG_SIZE by
-// evicting the lowest-seq (first-record order) entry. A per-dispatch `seq`
-// stamped at first record orders the recomposed getActionLog() view.
-//
-// Transition table for record(instance). The caller contract (define.ts)
-// records one pending then at most one terminal per dispatch id, and an id's
-// `name` never changes across records. Every cell is defined so an
-// out-of-contract input degrades to sane accounting rather than a desync;
-// each transition completes its map moves before publishing signals, so a
-// reentrant record from a synchronous effect lands on coherent state:
-//
-//   status   | id in inflight       | id in settled          | id unknown
-//   ---------|----------------------|------------------------|--------------------
-//   pending  | overwrite instance   | move back to inflight  | insert (new seq),
-//            | (keep seq)           | (keep seq), re-index   | index, watchdog
-//   terminal | move to settled      | overwrite instance     | insert into settled
-//            | (keep seq), unindex  | (keep seq + position)  | (new seq), evict
-//
-// pendingByName (over `inflight`) is the source of truth for pending state;
-// signals expose it reactively, and the total is `inflight.size` (membership,
-// not paired arithmetic). The record → listeners fan-out stays a plain
-// emitter — events are not reactive state.
-
 import { signal, batch, SignalMap } from "@cplieger/reactive";
 
 import type { ActionInstance, RegistryListener } from "./types.js";
@@ -41,6 +15,11 @@ interface LogEntry {
   readonly seq: number;
 }
 
+// Disjoint lifetimes keep pending accounting from desyncing with log
+// eviction: `inflight` holds pending dispatches (reclaimed only past
+// MAX_INFLIGHT), `settled` terminal snapshots, latest per id, bounded to
+// MAX_LOG_SIZE by evicting the lowest `seq`. `seq`, stamped at an id's first
+// record, orders getActionLog(); pendingByName indexes `inflight`.
 const inflight = new Map<string, LogEntry>();
 const settled = new Map<string, LogEntry>();
 let seqCounter = 0;
@@ -140,7 +119,13 @@ function reclaimLeakedPending(protectId: string): void {
   }
 }
 
-/** Record a state transition. Called by define.ts. */
+/** Record a state transition. Each cell completes its map moves before
+ *  publishing signals, so a reentrant record from an effect sees coherent state:
+ *
+ *    status   | in inflight          | in settled             | unknown
+ *    pending  | overwrite (keep seq) | move back, re-index    | insert, index, watchdog
+ *    terminal | move to settled,     | overwrite (keep seq    | insert into settled,
+ *             | unindex              | and position)          | evict */
 export function record(instance: ActionInstance): void {
   const { id } = instance;
   if (instance.status === "pending") {
@@ -231,12 +216,11 @@ export function subscribeByName(name: string, fn: RegistryListener): () => void 
 /** Read the recent action log. Useful for devtools integration and
  *  debugging panels. Returns a snapshot of all live entries.
  *
- *  SECURITY/PRIVACY: each entry retains the full dispatch `args` in memory (up
- *  to MAX_LOG_SIZE settled entries plus every in-flight dispatch, watchdog-
- *  bounded at MAX_INFLIGHT), `subscribeToActions` fans `args` out to every
- *  listener, and buildRetryButton retains a structuredClone of `args` in the
- *  error-notification retry closure. Do NOT put secrets, tokens, or PII in
- *  action args. */
+ *  SECURITY/PRIVACY: each entry retains the dispatch's `args`, `result` and
+ *  `error` (up to MAX_LOG_SIZE settled entries plus every in-flight dispatch,
+ *  watchdog-bounded at MAX_INFLIGHT), and every listener receives them. A
+ *  definition whose args or result carry a secret, token or PII sets
+ *  `sensitive`, whose entries hold none of the three. */
 export function getActionLog(): readonly ActionInstance[] {
   const entries = [...inflight.values(), ...settled.values()];
   entries.sort((a, b) => a.seq - b.seq);

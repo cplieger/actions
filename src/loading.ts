@@ -1,4 +1,4 @@
-import { effect } from "@cplieger/reactive";
+import { createRoot, effect } from "@cplieger/reactive";
 
 import { isPending, pendingCount } from "./registry.js";
 
@@ -14,18 +14,15 @@ interface BindLoadingOptions {
   disabledFn?: () => boolean;
 }
 
-/** Bind a button/input element's disabled / aria-busy state to one or more named actions. */
+/** Bind a button/input element's disabled / aria-busy state to one or more named actions.
+ *  The binding ends, restoring the element, when the returned function is called
+ *  or when the `@cplieger/reactive` owner it was created under is disposed. */
 export function bindLoadingState(
   actionName: string | readonly string[],
   el: DisableableElement,
   opts: BindLoadingOptions = {},
 ): () => void {
   const names: readonly string[] = typeof actionName === "string" ? [actionName] : actionName;
-  if (names.length === 0) {
-    return () => {
-      /* noop */
-    };
-  }
 
   const {
     ariaBusy = true,
@@ -38,10 +35,7 @@ export function bindLoadingState(
   let wasPending = false;
   let baseDisabled = el.disabled;
   let hadFocus = false;
-  let disposed = false;
   let wasConnected = el.isConnected;
-  // Holder lets run() self-dispose without a forward-referenced `let`.
-  const handle: { dispose?: () => void } = {};
 
   const resolveBase = (): boolean => {
     if (disabledFn !== undefined) {
@@ -71,19 +65,16 @@ export function bindLoadingState(
     hadFocus = false;
   };
 
+  // An empty name list sums nothing, so this stays false for the binding's
+  // whole life and the effect below never touches the element.
   const readPending = (): boolean =>
-    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion -- length checked above
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion -- the length-1 branch proves index 0
     names.length === 1 ? isPending(names[0]!) : pendingCount(names) > 0;
 
-  const run = (): undefined => {
-    if (disposed) {
-      return undefined;
-    }
+  const run = (dispose: () => void): void => {
     if (wasConnected && !el.isConnected) {
-      // Deferred: `dispose` is still unset during the effect's own first synchronous run.
-      disposed = true;
-      queueMicrotask(() => handle.dispose?.());
-      return undefined;
+      dispose();
+      return;
     }
     if (el.isConnected) {
       wasConnected = true;
@@ -105,7 +96,6 @@ export function bindLoadingState(
       setIdle();
     }
     wasPending = pending;
-    return undefined;
   };
 
   const restore = (): void => {
@@ -115,11 +105,27 @@ export function bindLoadingState(
     }
   };
 
-  handle.dispose = effect(run);
-
-  return () => {
-    disposed = true;
-    restore();
-    handle.dispose?.();
-  };
+  let restoreOnDispose = true;
+  return createRoot((dispose, owner) => {
+    // Runs after the effect is released, so a signal write from restore's
+    // focus() handler cannot re-run it. Self-release and the returned function
+    // clear the flag: the first leaves the element as it is, the second
+    // restores in the caller's context instead of this closing owner's.
+    owner.onDispose(() => {
+      if (restoreOnDispose) {
+        restore();
+      }
+    });
+    effect(() => {
+      run(() => {
+        restoreOnDispose = false;
+        dispose();
+      });
+    });
+    return () => {
+      restoreOnDispose = false;
+      dispose();
+      restore();
+    };
+  });
 }

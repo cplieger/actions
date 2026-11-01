@@ -10,6 +10,7 @@ vi.mock("./notifier.js", () => ({
 import { defineAction, _resetForTest as resetDefine } from "./define.js";
 import { _resetForTest as resetRegistry } from "./registry.js";
 import { _resetForTest as resetCleanup } from "./cleanup.js";
+import { createRoot } from "@cplieger/reactive";
 import { pollAction } from "./poll.js";
 
 beforeEach(() => {
@@ -192,6 +193,30 @@ describe("pollAction — refreshOnFocus", () => {
     await vi.runAllTicks();
     await vi.advanceTimersByTimeAsync(0);
     expect(count).toBe(1);
+
+    stop();
+  });
+
+  it("ignores a focus event while paused by a hidden document", async () => {
+    let count = 0;
+    const action = defineAction<undefined, number>({
+      name: "test.poll.focus_while_hidden",
+      run: async () => ++count,
+    });
+
+    Object.defineProperty(document, "hidden", { value: true, configurable: true });
+    vi.useFakeTimers();
+    const stop = pollAction(action, undefined, { interval: 10_000 });
+
+    await vi.runAllTicks();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(count).toBe(0);
+
+    window.dispatchEvent(new Event("focus"));
+
+    await vi.runAllTicks();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(count).toBe(0);
 
     stop();
   });
@@ -583,5 +608,55 @@ describe("pollAction — hidden at start", () => {
     expect(count).toBe(1);
 
     stop();
+  });
+});
+
+describe("pollAction — under a reactive owner", () => {
+  it("stops when its owner is disposed, and its stop function is then a no-op", async () => {
+    let count = 0;
+    const action = defineAction<undefined, number>({
+      name: "test.poll.owner",
+      run: async () => ++count,
+    });
+
+    vi.useFakeTimers();
+    let stop!: () => void;
+    const disposeRoot = createRoot((dispose) => {
+      stop = pollAction(action, undefined, { interval: 100 });
+      return dispose;
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(count).toBe(1);
+
+    disposeRoot();
+    expect(vi.getTimerCount()).toBe(0);
+    await vi.advanceTimersByTimeAsync(500);
+    window.dispatchEvent(new Event("focus"));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(count).toBe(1);
+
+    stop();
+    await vi.advanceTimersByTimeAsync(500);
+    expect(count).toBe(1);
+  });
+
+  it("stays stopped when its owner is disposed after its stop function ran", async () => {
+    let count = 0;
+    const action = defineAction<undefined, number>({
+      name: "test.poll.owner_stopped",
+      run: async () => ++count,
+    });
+
+    vi.useFakeTimers();
+    let stop!: () => void;
+    const disposeRoot = createRoot((dispose) => {
+      stop = pollAction(action, undefined, { interval: 100 });
+      return dispose;
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    stop();
+    disposeRoot();
+    await vi.advanceTimersByTimeAsync(500);
+    expect(count).toBe(1);
   });
 });

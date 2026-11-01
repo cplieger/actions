@@ -142,4 +142,23 @@ describe("bindLoadingState — multi-name", () => {
     await p2;
     expect(btn.disabled).toBe(false);
   });
+
+  it("binds nothing when the name list is empty", async () => {
+    let resolveRun!: () => void;
+    const action = defineAction({
+      name: "test.multi_empty",
+      run: () =>
+        new Promise<void>((r) => {
+          resolveRun = r;
+        }),
+    });
+    const btn = document.createElement("button");
+    const unbind = bindLoadingState([], btn);
+    const p = action.dispatch({});
+    expect(btn.disabled).toBe(false);
+    expect(btn.getAttribute("aria-busy")).toBeNull();
+    resolveRun();
+    await p;
+    unbind();
+  });
 });

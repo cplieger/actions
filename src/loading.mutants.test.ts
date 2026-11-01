@@ -1,6 +1,3 @@
-// Covers two edges the rest of the suite doesn't: the self-dispose latch
-// (re-attach before the deferred dispose runs) and the nothing-holds-focus
-// arm of the focus-restore guard.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { resetActionFramework } from "./test-helpers/action-test-setup.js";
 vi.mock("./notifier.js", () => ({
@@ -36,19 +33,17 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("bindLoadingState — the self-dispose latch", () => {
-  it("leaves an element alone once it has left the document, even if it returns before the deferred dispose runs", () => {
+describe("bindLoadingState — letting go of a detached element", () => {
+  it("leaves an element alone once it has left the document, even if it returns", () => {
     const btn = document.createElement("button");
     document.body.append(btn);
     bindLoadingState("load.detach", btn);
 
     btn.remove();
 
-    // Effect notices the detach and latches disposed, deferring unsubscribe to a microtask.
     record(instance("detach-1", "load.detach", "pending"));
     expect(btn.disabled).toBe(false);
 
-    // Still the same turn (dispose hasn't run); re-attaching must not resurrect the binding.
     document.body.append(btn);
     record(instance("detach-2", "load.detach", "pending"));
 
@@ -93,7 +88,7 @@ describe("bindLoadingState — focus restore when nothing holds focus", () => {
     expect(focusSpy).toHaveBeenCalledTimes(1);
   });
 
-  it("latches itself disposed before restoring, so an update triggered by the restore cannot re-disable the element", () => {
+  it("releases the binding before restoring, so an update triggered by the restore cannot re-disable the element", () => {
     const btn = document.createElement("button");
     document.body.append(btn);
     const unbind = bindLoadingState("load.reentrant", btn);
