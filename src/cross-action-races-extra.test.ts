@@ -5,7 +5,7 @@ vi.mock("./notifier.js", () => ({
   notifyError: vi.fn(),
   _resetNotifierForTest: vi.fn(),
 }));
-import { defineAction, _resetForTest as resetDefine, _internalsForTest } from "./define.js";
+import { defineAction, _resetForTest as resetDefine } from "./define.js";
 import { _resetForTest as resetRegistry } from "./registry.js";
 import { _resetForTest as resetCleanup } from "./cleanup.js";
 import { ActionError, retryNetwork } from "./error.js";
