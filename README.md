@@ -1,5 +1,8 @@
 # actions
 
+> Moved into [`@cplieger/ui`](https://github.com/cplieger/ui): import `@cplieger/ui/actions`, and `@cplieger/ui/actions/testing` in tests, as the [migration guide](https://github.com/cplieger/ui/blob/main/docs/migrating.md) shows.
+> **Archived 2026-11-04. This repository is read-only. The published package stays available.**
+
 [![npm](https://img.shields.io/npm/v/@cplieger/actions)](https://www.npmjs.com/package/@cplieger/actions) [![JSR](https://jsr.io/badges/@cplieger/actions)](https://jsr.io/@cplieger/actions) [![Mutation (TS)](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/cplieger/actions/badges/mutation-ts.json)](https://github.com/cplieger/actions/issues?q=label%3Astryker-tracker)
 
 actions gives every server call in your TypeScript UI the same pending state, retry, rollback and messages, from one declaration per action.
